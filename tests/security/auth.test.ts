@@ -26,40 +26,40 @@ describe("AuthProvider", () => {
   });
 
   describe("getApiKey()", () => {
-    it("returns API key from env var", () => {
+    it("returns API key from env var", async () => {
       process.env.APCORE_AUTH_API_KEY = "test-key-123";
       const config = new ConfigResolver();
       const auth = new AuthProvider(config);
-      expect(auth.getApiKey()).toBe("test-key-123");
+      expect(await auth.getApiKey()).toBe("test-key-123");
     });
 
-    it("returns null when no key configured", () => {
+    it("returns null when no key configured", async () => {
       const config = new ConfigResolver();
       const auth = new AuthProvider(config);
-      expect(auth.getApiKey()).toBeNull();
+      expect(await auth.getApiKey()).toBeNull();
     });
 
-    it("returns API key from CLI flags", () => {
+    it("returns API key from CLI flags", async () => {
       const config = new ConfigResolver({ "--api-key": "cli-key" });
       const auth = new AuthProvider(config);
-      expect(auth.getApiKey()).toBe("cli-key");
+      expect(await auth.getApiKey()).toBe("cli-key");
     });
   });
 
   describe("authenticateRequest()", () => {
-    it("adds Authorization: Bearer header", () => {
+    it("adds Authorization: Bearer header", async () => {
       process.env.APCORE_AUTH_API_KEY = "my-key";
       const config = new ConfigResolver();
       const auth = new AuthProvider(config);
-      const headers = auth.authenticateRequest({ "Content-Type": "application/json" });
+      const headers = await auth.authenticateRequest({ "Content-Type": "application/json" });
       expect(headers.Authorization).toBe("Bearer my-key");
       expect(headers["Content-Type"]).toBe("application/json");
     });
 
-    it("throws AuthenticationError when no key available", () => {
+    it("throws AuthenticationError when no key available", async () => {
       const config = new ConfigResolver();
       const auth = new AuthProvider(config);
-      expect(() => auth.authenticateRequest({})).toThrow(AuthenticationError);
+      await expect(auth.authenticateRequest({})).rejects.toThrow(AuthenticationError);
     });
   });
 

@@ -16,6 +16,7 @@ let keytarModule: any = null; // eslint-disable-line @typescript-eslint/no-expli
 async function getKeytar(): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   if (keytarModule) return keytarModule;
   try {
+    // @ts-expect-error — keytar is an optional peer dependency
     keytarModule = await import("keytar");
     return keytarModule;
   } catch {

@@ -146,7 +146,7 @@ export function buildModuleCommand(
     if (opt.parseArg) {
       cmd.option(opt.flags, opt.description, opt.parseArg, opt.defaultValue);
     } else {
-      cmd.option(opt.flags, opt.description, opt.defaultValue);
+      cmd.option(opt.flags, opt.description, opt.defaultValue as string | boolean | undefined);
     }
   }
 

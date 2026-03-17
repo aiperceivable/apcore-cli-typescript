@@ -28,7 +28,7 @@ export class AuthProvider {
    * Retrieve the API key from the configured sources.
    * Handles keyring: and enc: prefixes via ConfigEncryptor.
    */
-  getApiKey(): string | null {
+  async getApiKey(): Promise<string | null> {
     const result = this.config.resolve(
       "auth.api_key",
       "--api-key",
@@ -47,10 +47,10 @@ export class AuthProvider {
   /**
    * Add authentication headers to an outgoing request.
    */
-  authenticateRequest(
+  async authenticateRequest(
     headers: Record<string, string>,
-  ): Record<string, string> {
-    const key = this.getApiKey();
+  ): Promise<Record<string, string>> {
+    const key = await this.getApiKey();
     if (!key) {
       throw new AuthenticationError(
         "Remote registry requires authentication. " +
