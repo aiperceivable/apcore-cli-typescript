@@ -23,7 +23,7 @@ export { formatExecResult, resolveFormat, truncate, formatModuleList, formatModu
 
 // Schema handling
 export { resolveRefs } from "./ref-resolver.js";
-export { schemaToCommanderOptions, mapType, extractHelp } from "./schema-parser.js";
+export { schemaToCliOptions, mapType, extractHelp } from "./schema-parser.js";
 
 // Approval
 export { checkApproval } from "./approval.js";
@@ -46,4 +46,4 @@ export {
 export type { ExitCode } from "./errors.js";
 
 // Security
-export { AuditLogger, AuthProvider, ConfigEncryptor, Sandbox } from "./security/index.js";
+export { AuditLogger, setAuditLogger, getAuditLogger, AuthProvider, ConfigEncryptor, Sandbox } from "./security/index.js";

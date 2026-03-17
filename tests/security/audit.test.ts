@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuditLogger } from "../../src/security/audit.js";
+import { AuditLogger, setAuditLogger, getAuditLogger } from "../../src/security/audit.js";
 
 describe("AuditLogger", () => {
   let tmpDir: string;
@@ -67,5 +67,32 @@ describe("AuditLogger", () => {
   it("uses default path based on home directory", () => {
     expect(AuditLogger.DEFAULT_PATH).toContain(".apcore-cli");
     expect(AuditLogger.DEFAULT_PATH).toContain("audit.jsonl");
+  });
+
+  it("constructor parameter is named 'path' (not 'logPath')", () => {
+    // Regression: A-002 — param name must match spec canonical name
+    const logger = new AuditLogger(logPath);
+    expect(logger).toBeInstanceOf(AuditLogger);
+  });
+});
+
+describe("setAuditLogger / getAuditLogger", () => {
+  afterEach(() => {
+    setAuditLogger(null);
+  });
+
+  it("sets and gets a module-level audit logger", () => {
+    // Regression: A-001 — setAuditLogger must be exported
+    expect(getAuditLogger()).toBeNull();
+    const logger = new AuditLogger("/tmp/test-audit.jsonl");
+    setAuditLogger(logger);
+    expect(getAuditLogger()).toBe(logger);
+  });
+
+  it("clears the logger when set to null", () => {
+    const logger = new AuditLogger("/tmp/test-audit.jsonl");
+    setAuditLogger(logger);
+    setAuditLogger(null);
+    expect(getAuditLogger()).toBeNull();
   });
 });

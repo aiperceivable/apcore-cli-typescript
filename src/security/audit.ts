@@ -33,6 +33,22 @@ interface AuditEntry {
  * Appends structured JSONL entries to an audit log file for every module
  * execution, supporting compliance and debugging.
  */
+let _auditLogger: AuditLogger | null = null;
+
+/**
+ * Set the module-level audit logger instance.
+ */
+export function setAuditLogger(auditLogger: AuditLogger | null): void {
+  _auditLogger = auditLogger;
+}
+
+/**
+ * Get the current module-level audit logger instance.
+ */
+export function getAuditLogger(): AuditLogger | null {
+  return _auditLogger;
+}
+
 export class AuditLogger {
   static readonly DEFAULT_PATH = path.join(
     os.homedir(),
@@ -42,8 +58,8 @@ export class AuditLogger {
 
   private readonly logPath: string;
 
-  constructor(logPath?: string) {
-    this.logPath = logPath ?? AuditLogger.DEFAULT_PATH;
+  constructor(path?: string) {
+    this.logPath = path ?? AuditLogger.DEFAULT_PATH;
     this.ensureDirectory();
   }
 

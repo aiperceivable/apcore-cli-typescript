@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { schemaToCommanderOptions, mapType, extractHelp } from "../src/schema-parser.js";
+import { schemaToCliOptions, mapType, extractHelp } from "../src/schema-parser.js";
 import { reconvertEnumValues } from "../src/main.js";
 
 afterEach(() => {
@@ -81,14 +81,14 @@ describe("extractHelp()", () => {
   });
 });
 
-describe("schemaToCommanderOptions()", () => {
+describe("schemaToCliOptions()", () => {
   it("returns empty array for schema with no properties", () => {
-    expect(schemaToCommanderOptions({})).toEqual([]);
-    expect(schemaToCommanderOptions({ properties: {} })).toEqual([]);
+    expect(schemaToCliOptions({})).toEqual([]);
+    expect(schemaToCliOptions({ properties: {} })).toEqual([]);
   });
 
   it("generates option for string property", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { name: { type: "string", description: "User name" } },
     });
     expect(opts).toHaveLength(1);
@@ -98,7 +98,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("generates option for integer property with parseArg", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { count: { type: "integer" } },
     });
     expect(opts).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("generates option for number property with parseArg", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { price: { type: "number" } },
     });
     expect(opts).toHaveLength(1);
@@ -115,14 +115,14 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("converts underscore to hyphen in flag names", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { my_flag: { type: "string" } },
     });
     expect(opts[0].flags).toBe("--my-flag <value>");
   });
 
   it("marks required fields with [required] in help text", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { name: { type: "string", description: "Name" } },
       required: ["name"],
     });
@@ -130,7 +130,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("does NOT set required=true at option level", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { name: { type: "string" } },
       required: ["name"],
     });
@@ -138,7 +138,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("uses property default value", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { level: { type: "string", default: "info" } },
     });
     expect(opts[0].defaultValue).toBe("info");
@@ -146,7 +146,7 @@ describe("schemaToCommanderOptions()", () => {
 
   // Boolean flags
   it("generates --flag/--no-flag pair for boolean type", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { verbose: { type: "boolean" } },
     });
     expect(opts[0].flags).toBe("--verbose, --no-verbose");
@@ -155,7 +155,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("uses boolean default from schema", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { verbose: { type: "boolean", default: true } },
     });
     expect(opts[0].defaultValue).toBe(true);
@@ -163,21 +163,21 @@ describe("schemaToCommanderOptions()", () => {
 
   // Enum choices
   it("generates choices for enum values", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { color: { type: "string", enum: ["red", "green", "blue"] } },
     });
     expect(opts[0].choices).toEqual(["red", "green", "blue"]);
   });
 
   it("converts enum values to strings", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { level: { type: "integer", enum: [1, 2, 3] } },
     });
     expect(opts[0].choices).toEqual(["1", "2", "3"]);
   });
 
   it("stores original enum types for reconversion", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { level: { type: "integer", enum: [1, 2, 3] } },
     });
     expect(opts[0].enumOriginalTypes).toEqual({
@@ -188,7 +188,7 @@ describe("schemaToCommanderOptions()", () => {
   });
 
   it("handles empty enum array gracefully", () => {
-    const opts = schemaToCommanderOptions({
+    const opts = schemaToCliOptions({
       properties: { color: { type: "string", enum: [] } },
     });
     expect(opts[0].choices).toBeUndefined();
@@ -214,7 +214,7 @@ describe("schemaToCommanderOptions()", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     expect(() =>
-      schemaToCommanderOptions({
+      schemaToCliOptions({
         properties: { input: { type: "string" } },
       }),
     ).toThrow("exit");
@@ -228,7 +228,7 @@ describe("schemaToCommanderOptions()", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     expect(() =>
-      schemaToCommanderOptions({
+      schemaToCliOptions({
         properties: { format: { type: "string" } },
       }),
     ).toThrow("exit");

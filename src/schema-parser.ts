@@ -64,7 +64,7 @@ export function extractHelp(propSchema: Record<string, unknown>): string | undef
 }
 
 // ---------------------------------------------------------------------------
-// schemaToCommanderOptions
+// schemaToCliOptions
 // ---------------------------------------------------------------------------
 
 /** Reserved CLI option names that cannot be used by schema properties. */
@@ -74,7 +74,7 @@ const RESERVED_NAMES = new Set(["input", "yes", "large_input", "format", "sandbo
  * Convert a JSON Schema `properties` object into an array of
  * Commander option configurations.
  */
-export function schemaToCommanderOptions(
+export function schemaToCliOptions(
   schema: Record<string, unknown>,
 ): OptionConfig[] {
   const properties = (schema.properties ?? {}) as Record<
