@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/aipartnerup/apcore-cli/main/apcore-cli-logo.svg" alt="apcore-cli logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/aiperceivable/apcore-cli/main/apcore-cli-logo.svg" alt="apcore-cli logo" width="200"/>
 </div>
 
 # apcore-cli
@@ -12,12 +12,12 @@ Terminal adapter for apcore. Execute AI-Perceivable modules from the command lin
 
 | | |
 |---|---|
-| **TypeScript SDK** | [github.com/aipartnerup/apcore-cli-typescript](https://github.com/aipartnerup/apcore-cli-typescript) |
-| **Python SDK** | [github.com/aipartnerup/apcore-cli-python](https://github.com/aipartnerup/apcore-cli-python) |
-| **Spec repo** | [github.com/aipartnerup/apcore-cli](https://github.com/aipartnerup/apcore-cli) |
-| **apcore core** | [github.com/aipartnerup/apcore](https://github.com/aipartnerup/apcore) |
+| **TypeScript SDK** | [github.com/aiperceivable/apcore-cli-typescript](https://github.com/aiperceivable/apcore-cli-typescript) |
+| **Python SDK** | [github.com/aiperceivable/apcore-cli-python](https://github.com/aiperceivable/apcore-cli-python) |
+| **Spec repo** | [github.com/aiperceivable/apcore-cli](https://github.com/aiperceivable/apcore-cli) |
+| **apcore core** | [github.com/aiperceivable/apcore](https://github.com/aiperceivable/apcore) |
 
-**apcore-cli** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into a fully featured CLI tool — with **zero code changes** to your existing modules.
+**apcore-cli** turns any [apcore](https://github.com/aiperceivable/apcore)-based project into a fully featured CLI tool — with **zero code changes** to your existing modules.
 
 ```
 ┌──────────────────┐
@@ -281,7 +281,7 @@ apcore Registry + Executor (your modules, unchanged)
 ## Development
 
 ```bash
-git clone https://github.com/aipartnerup/apcore-cli-typescript.git
+git clone https://github.com/aiperceivable/apcore-cli-typescript.git
 cd apcore-cli-typescript
 pnpm install
 pnpm test                        # 183 tests
