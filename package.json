@@ -27,7 +27,7 @@
     "node": ">=18.0.0"
   },
   "peerDependencies": {
-    "apcore-js": "^0.13.0"
+    "apcore-js": ">=0.14.0"
   },
   "dependencies": {
     "commander": "^12.0.0",
