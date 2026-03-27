@@ -80,7 +80,7 @@ export function registerInitCommand(cli: Command): void {
 
       // Validate --dir to prevent path traversal
       const dir = opts.dir ?? (style === "decorator" ? "extensions" : style === "binding" ? "bindings" : "commands");
-      if (dir.includes("..")) {
+      if (dir.split(path.sep).includes("..") || dir.split("/").includes("..")) {
         process.stderr.write(`Error: Output directory must not contain '..' path components.\n`);
         process.exit(2);
       }
