@@ -11,8 +11,13 @@ import { Command } from "commander";
 import { EXIT_CODES } from "./errors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
-const SHELL_VERSION: string = pkg.version;
+let SHELL_VERSION = "0.0.0";
+try {
+  const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
+  SHELL_VERSION = pkg.version;
+} catch {
+  // Bundled environments (e.g., Bun compile) may not have package.json accessible
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

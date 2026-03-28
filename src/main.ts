@@ -19,8 +19,13 @@ import { getDisplay } from "./display-helpers.js";
 import type { Executor, ModuleDescriptor } from "./cli.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
-const VERSION: string = pkg.version;
+let VERSION = "0.0.0";
+try {
+  const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
+  VERSION = pkg.version;
+} catch {
+  // Bundled environments (e.g., Bun compile) may not have package.json accessible
+}
 
 // ---------------------------------------------------------------------------
 // Types
