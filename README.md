@@ -148,6 +148,8 @@ apcore-cli [OPTIONS] COMMAND [ARGS]
 | `--log-level` | `WARNING` | Logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `--version` | | Show version and exit |
 | `--help` | | Show help and exit |
+| `--verbose` | | Show all options in help (including built-in apcore options) |
+| `--man` | | Output man page in roff format (use with `--help`) |
 
 ### Built-in Commands
 
@@ -161,7 +163,7 @@ apcore-cli [OPTIONS] COMMAND [ARGS]
 
 ### Module Execution Options
 
-When executing a module (e.g. `apcore-cli math.add`), these built-in options are always available:
+When executing a module (e.g. `apcore-cli math.add`), these built-in options are available (hidden by default; use `--verbose` to show in `--help`):
 
 | Option | Description |
 |--------|-------------|
@@ -169,7 +171,7 @@ When executing a module (e.g. `apcore-cli math.add`), these built-in options are
 | `--yes` / `-y` | Bypass approval prompts |
 | `--large-input` | Allow STDIN input larger than 10MB |
 | `--format` | Output format: `json` or `table` |
-| `--sandbox` | Run module in subprocess sandbox |
+| `--sandbox` | Run module in subprocess sandbox (not yet implemented — always hidden) |
 
 Schema-generated flags (e.g. `--a`, `--b`) are added automatically from the module's `input_schema`.
 
@@ -234,7 +236,8 @@ cli:
 - **Schema validation** -- inputs validated against JSON Schema before execution, with `$ref`/`allOf`/`anyOf`/`oneOf` resolution
 - **Security** -- API key auth (keyring + AES-256-GCM), append-only audit logging, subprocess sandboxing
 - **Shell completions** -- `apcore-cli completion bash|zsh|fish` generates completion scripts with dynamic module ID completion
-- **Man pages** -- `apcore-cli man <command>` generates roff-formatted man pages
+- **Man pages** -- `apcore-cli man <command>` for single commands, or `--help --man` for a complete program man page. `configureManHelp()` provides one-line integration for downstream projects
+- **Documentation URL** -- `setDocsUrl()` adds doc links to help footers and man pages
 - **Audit logging** -- all executions logged to `~/.apcore-cli/audit.jsonl` with SHA-256 input hashing
 
 ## How It Works
@@ -274,7 +277,7 @@ apcore Registry + Executor (your modules, unchanged)
 
 **Classes:** `LazyModuleGroup`, `ConfigResolver`, `AuthProvider`, `ConfigEncryptor`, `AuditLogger`, `Sandbox`
 
-**Functions:** `createCli`, `main`, `buildModuleCommand`, `validateModuleId`, `collectInput`, `schemaToCliOptions`, `reconvertEnumValues`, `resolveRefs`, `checkApproval`, `resolveFormat`, `formatModuleList`, `formatModuleDetail`, `formatExecResult`, `registerDiscoveryCommands`, `registerShellCommands`, `setAuditLogger`, `getAuditLogger`, `exitCodeForError`, `mapType`, `extractHelp`, `truncate`
+**Functions:** `createCli`, `main`, `buildModuleCommand`, `validateModuleId`, `collectInput`, `schemaToCliOptions`, `reconvertEnumValues`, `resolveRefs`, `checkApproval`, `resolveFormat`, `formatModuleList`, `formatModuleDetail`, `formatExecResult`, `registerDiscoveryCommands`, `registerShellCommands`, `setAuditLogger`, `getAuditLogger`, `setVerboseHelp`, `setDocsUrl`, `buildProgramManPage`, `configureManHelp`, `exitCodeForError`, `mapType`, `extractHelp`, `truncate`
 
 **Errors:** `ApprovalTimeoutError`, `ApprovalDeniedError`, `AuthenticationError`, `ConfigDecryptionError`, `ModuleExecutionError`, `ModuleNotFoundError`, `SchemaValidationError`
 

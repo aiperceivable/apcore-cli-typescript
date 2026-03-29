@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import { EXIT_CODES, exitCodeForError } from "./errors.js";
 import { resolveRefs } from "./ref-resolver.js";
 import { schemaToCliOptions } from "./schema-parser.js";
@@ -19,6 +19,33 @@ import { getDisplay } from "./display-helpers.js";
 import type { Executor, ModuleDescriptor } from "./cli.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Whether --verbose was passed (controls help detail level). */
+export let verboseHelp = false;
+
+/** Set the verbose help flag. When false, built-in options are hidden from help. */
+export function setVerboseHelp(verbose: boolean): void {
+  verboseHelp = verbose;
+}
+
+/** Base URL for online documentation. Null means no docs link shown. */
+export let docsUrl: string | null = null;
+
+/**
+ * Set the base URL for online documentation links shown in help and man pages.
+ * Pass null to disable. Command-level help appends `/commands/{name}` automatically.
+ *
+ * @example setDocsUrl("https://docs.apcore.dev/cli");
+ */
+export function setDocsUrl(url: string | null): void {
+  docsUrl = url;
+}
+
+/** Check if --verbose is present in process.argv (pre-parse, before Commander). */
+function hasVerboseFlag(): boolean {
+  return process.argv.includes("--verbose");
+}
+
 let VERSION = "0.0.0";
 try {
   const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
@@ -66,7 +93,9 @@ export interface OptionConfig {
 export function createCli(
   extensionsDir?: string,
   progName?: string,
+  verbose = false,
 ): Command {
+  verboseHelp = verbose;
   // Resolve program name
   const resolvedProgName = progName ?? path.basename(process.argv[1] ?? "apcore-cli") ?? "apcore-cli";
 
@@ -81,7 +110,8 @@ export function createCli(
     .option("--extensions-dir <path>", "Path to extensions directory")
     .option("--commands-dir <path>", "Path to convention-based commands directory")
     .option("--binding <path>", "Path to binding.yaml for display overlay")
-    .option("--log-level <level>", "Logging level (DEBUG|INFO|WARNING|ERROR)", "WARNING");
+    .option("--log-level <level>", "Logging level (DEBUG|INFO|WARNING|ERROR)", "WARNING")
+    .option("--verbose", "Show all options in help output (including built-in apcore options)");
 
   // NOTE: Full registry/executor wiring requires apcore-js to be available.
   // For now, extensions-dir is accepted but not wired to a real registry.
@@ -156,7 +186,8 @@ export async function applyToolkitIntegration(
  * Parse argv and run the CLI. Handles top-level error catching and exit codes.
  */
 export function main(progName?: string): void {
-  const program = createCli(undefined, progName);
+  verboseHelp = hasVerboseFlag();
+  const program = createCli(undefined, progName, verboseHelp);
 
   try {
     program.parse(process.argv);
@@ -185,6 +216,7 @@ export function buildModuleCommand(
   executor: Executor,
   helpTextMaxLength = 1000,
   cmdName?: string,
+  verbose = verboseHelp,
 ): Command {
   const moduleId = moduleDef.id;
   let resolvedSchema: Record<string, unknown> = {};
@@ -211,12 +243,38 @@ export function buildModuleCommand(
 
   const cmd = new Command(effectiveCmdName).description(cmdHelp);
 
-  // Built-in options
-  cmd.option("--input <source>", "Read input from STDIN ('-')");
-  cmd.option("-y, --yes", "Bypass approval prompts", false);
-  cmd.option("--large-input", "Allow STDIN input larger than 10MB", false);
-  cmd.option("--format <format>", "Output format (json|table)");
-  cmd.option("--sandbox", "Run module in subprocess sandbox", false);
+  // Built-in options (hidden unless --verbose)
+  const inputOpt = new Option("--input <source>", "Read JSON input from a file path, or use '-' to read from stdin pipe");
+  const yesOpt = new Option("-y, --yes", "Skip interactive approval prompts (for scripts and CI)").default(false);
+  const largeInputOpt = new Option("--large-input", "Allow stdin input larger than 10MB (default limit protects against accidental pipes)").default(false);
+  const formatOpt = new Option("--format <format>", "Set output format: 'json' for machine-readable, 'table' for human-readable");
+  // --sandbox is always hidden (not yet implemented)
+  const sandboxOpt = new Option("--sandbox", "Run module in an isolated subprocess with restricted filesystem and env access").default(false).hideHelp();
+
+  if (!verbose) {
+    inputOpt.hideHelp();
+    yesOpt.hideHelp();
+    largeInputOpt.hideHelp();
+    formatOpt.hideHelp();
+  }
+
+  cmd.addOption(inputOpt);
+  cmd.addOption(yesOpt);
+  cmd.addOption(largeInputOpt);
+  cmd.addOption(formatOpt);
+  cmd.addOption(sandboxOpt);
+
+  // Help footer: verbose hint + optional docs link
+  const footerParts: string[] = [];
+  if (!verbose) {
+    footerParts.push("Use --verbose to show all options (including built-in apcore options).");
+  }
+  if (docsUrl) {
+    footerParts.push(`Docs: ${docsUrl}/commands/${effectiveCmdName}`);
+  }
+  if (footerParts.length > 0) {
+    cmd.addHelpText("after", "\n" + footerParts.join("\n") + "\n");
+  }
 
   // Schema-generated options
   for (const opt of schemaOptions) {
@@ -238,7 +296,7 @@ export function buildModuleCommand(
 
     // Remove built-in keys from options to get schema kwargs
     const schemaKwargs: Record<string, unknown> = {};
-    const builtinKeys = new Set(["input", "yes", "largeInput", "format", "sandbox"]);
+    const builtinKeys = new Set(["input", "yes", "largeInput", "format", "sandbox", "verbose"]);
     for (const [k, v] of Object.entries(options)) {
       if (!builtinKeys.has(k)) {
         schemaKwargs[k] = v;

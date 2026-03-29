@@ -5,6 +5,18 @@ All notable changes to apcore-cli (TypeScript SDK) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-29
+
+### Added
+- **Verbose help mode** — Built-in apcore options (`--input`, `--yes`, `--large-input`, `--format`, `--sandbox`) are now hidden from `--help` output by default. Pass `--help --verbose` to display the full option list including built-in options.
+- **Universal man page generation** — `buildProgramManPage()` generates a complete roff man page covering all registered commands. `configureManHelp()` adds `--help --man` support to any Commander program, enabling downstream projects to get man pages for free.
+- **Documentation URL support** — `setDocsUrl()` sets a base URL for online docs. Per-command help shows `Docs: {url}/commands/{name}`, man page SEE ALSO includes `Full documentation at {url}`. No default — disabled when not set.
+
+### Changed
+- `buildModuleCommand()` accepts optional `verboseHelp` parameter to control built-in option visibility in help.
+- `--sandbox` is now always hidden from help (not yet implemented). Only four built-in options (`--input`, `--yes`, `--large-input`, `--format`) toggle with `--verbose`.
+- Improved built-in option descriptions for clarity (e.g., `--input` now reads "Read JSON input from a file path, or use '-' to read from stdin pipe").
+
 ## [0.3.2] - 2026-03-28
 
 ### Fixed

@@ -5,7 +5,7 @@
  */
 
 // Core CLI
-export { createCli, main, buildModuleCommand, validateModuleId, collectInput, reconvertEnumValues, applyToolkitIntegration } from "./main.js";
+export { createCli, main, buildModuleCommand, validateModuleId, collectInput, reconvertEnumValues, applyToolkitIntegration, verboseHelp, setVerboseHelp, docsUrl, setDocsUrl } from "./main.js";
 export type { OptionConfig } from "./main.js";
 
 // Lazy module loading
@@ -35,7 +35,7 @@ export { schemaToCliOptions, mapType, extractHelp } from "./schema-parser.js";
 export { checkApproval } from "./approval.js";
 
 // Shell integration
-export { registerShellCommands } from "./shell.js";
+export { registerShellCommands, buildProgramManPage, configureManHelp } from "./shell.js";
 
 // Errors
 export {

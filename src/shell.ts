@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
-import { Command } from "commander";
+import { Command, Help, Option } from "commander";
 import { EXIT_CODES } from "./errors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -356,6 +356,172 @@ function generateManPage(
   );
 
   return sections.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Program-wide man page generation
+// ---------------------------------------------------------------------------
+
+/** Escape a string for roff output. */
+function roffEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/-/g, "\\-").replace(/'/g, "\\(aq");
+}
+
+/**
+ * Build a complete roff man page for the entire program.
+ * Covers all registered commands including downstream business commands.
+ */
+export function buildProgramManPage(
+  program: Command,
+  progName: string,
+  version: string,
+  description?: string,
+  docsUrl?: string,
+): string {
+  const help = new Help();
+  const today = new Date().toISOString().slice(0, 10);
+  const s: string[] = [];
+
+  const resolvedDesc = description ?? program.description() ?? `${progName} CLI`;
+
+  s.push(`.TH "${progName.toUpperCase()}" "1" "${today}" "${progName} ${version}" "${progName} Manual"`);
+
+  s.push(".SH NAME");
+  s.push(`${progName} \\- ${roffEscape(resolvedDesc)}`);
+
+  s.push(".SH SYNOPSIS");
+  s.push(`\\fB${progName}\\fR [\\fIglobal\\-options\\fR] \\fIcommand\\fR [\\fIcommand\\-options\\fR]`);
+
+  if (resolvedDesc) {
+    s.push(".SH DESCRIPTION");
+    s.push(roffEscape(resolvedDesc));
+  }
+
+  // Global options
+  const globalOpts = help.visibleOptions(program)
+    .filter((o) => !["help", "version", "all", "man"].includes(o.long?.replace("--", "") ?? ""));
+  if (globalOpts.length > 0) {
+    s.push(".SH GLOBAL OPTIONS");
+    for (const opt of globalOpts) {
+      const flag = [opt.short, opt.long].filter(Boolean).join(", ");
+      s.push(".TP");
+      s.push(`\\fB${roffEscape(flag)}\\fR`);
+      if (opt.description) s.push(roffEscape(opt.description));
+    }
+  }
+
+  // Commands
+  const allCommands = help.visibleCommands(program);
+  if (allCommands.length > 0) {
+    s.push(".SH COMMANDS");
+    for (const cmd of allCommands) {
+      if (cmd.name() === "help") continue;
+
+      const desc = help.subcommandDescription(cmd);
+      s.push(".TP");
+      s.push(`\\fB${progName} ${roffEscape(cmd.name())}\\fR`);
+      if (desc) s.push(roffEscape(desc));
+
+      // Command options
+      const cmdHelp = new Help();
+      const opts = cmdHelp.visibleOptions(cmd)
+        .filter((o) => !["help", "version"].includes(o.long?.replace("--", "") ?? ""));
+      for (const opt of opts) {
+        const flag = [opt.short, opt.long].filter(Boolean).join(", ");
+        s.push(".RS");
+        s.push(".TP");
+        s.push(`\\fB${roffEscape(flag)}\\fR`);
+        if (opt.description) s.push(roffEscape(opt.description));
+        s.push(".RE");
+      }
+
+      // Nested subcommands (e.g., series init, asset add)
+      const subCmds = cmdHelp.visibleCommands(cmd).filter((c) => c.name() !== "help");
+      for (const sub of subCmds) {
+        const subDesc = help.subcommandDescription(sub);
+        s.push(".TP");
+        s.push(`\\fB${progName} ${roffEscape(cmd.name())} ${roffEscape(sub.name())}\\fR`);
+        if (subDesc) s.push(roffEscape(subDesc));
+        const subOpts = cmdHelp.visibleOptions(sub)
+          .filter((o) => !["help", "version"].includes(o.long?.replace("--", "") ?? ""));
+        for (const opt of subOpts) {
+          const flag = [opt.short, opt.long].filter(Boolean).join(", ");
+          s.push(".RS");
+          s.push(".TP");
+          s.push(`\\fB${roffEscape(flag)}\\fR`);
+          if (opt.description) s.push(roffEscape(opt.description));
+          s.push(".RE");
+        }
+      }
+    }
+  }
+
+  // Environment
+  s.push(".SH ENVIRONMENT");
+  s.push(".TP");
+  s.push("\\fBAPCORE_EXTENSIONS_ROOT\\fR");
+  s.push("Path to the apcore extensions directory.");
+  s.push(".TP");
+  s.push("\\fBAPCORE_CLI_AUTO_APPROVE\\fR");
+  s.push("Set to \\fB1\\fR to bypass approval prompts.");
+  s.push(".TP");
+  s.push("\\fBAPCORE_CLI_LOGGING_LEVEL\\fR");
+  s.push("CLI\\-specific logging verbosity (DEBUG|INFO|WARNING|ERROR).");
+
+  // Exit codes
+  s.push(".SH EXIT CODES");
+  const exitCodes: [string, string][] = [
+    ["0", "Success."],
+    ["1", "Module execution error."],
+    ["2", "Invalid CLI input or missing argument."],
+    ["44", "Module not found, disabled, or failed to load."],
+    ["45", "Input failed JSON Schema validation."],
+    ["46", "Approval denied or timed out."],
+    ["47", "Configuration error."],
+    ["77", "ACL denied."],
+    ["130", "Cancelled by user (SIGINT)."],
+  ];
+  for (const [code, meaning] of exitCodes) {
+    s.push(`.TP\n\\fB${code}\\fR\n${meaning}`);
+  }
+
+  s.push(".SH SEE ALSO");
+  s.push(`\\fB${progName} \\-\\-help \\-\\-verbose\\fR for full option list.`);
+  if (docsUrl) {
+    s.push(`.PP\nFull documentation at \\fI${roffEscape(docsUrl)}\\fR`);
+  }
+
+  return s.join("\n");
+}
+
+/**
+ * Configure --help --man support on a Commander program.
+ * When --man is passed with --help, outputs a complete roff man page
+ * covering all registered commands (including downstream business commands).
+ *
+ * Usage in downstream projects:
+ *   configureManHelp(program, 'reach', '0.2.0', 'ReachForge: The Social Influence Engine', 'https://reachforge.dev/docs');
+ */
+export function configureManHelp(
+  program: Command,
+  progName: string,
+  version: string,
+  description?: string,
+  docsUrl?: string,
+): void {
+  // Add --man as a hidden option
+  const manOpt = new Option("--man", "Output man page in roff format (use with --help)").hideHelp();
+  program.addOption(manOpt);
+
+  // Intercept help to output roff when --man is set
+  program.addHelpText("beforeAll", () => {
+    if (program.opts().man) {
+      process.stdout.write(buildProgramManPage(program, progName, version, description, docsUrl));
+      process.stdout.write("\n");
+      process.exit(0);
+    }
+    return "";
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Command } from "commander";
-import { registerShellCommands } from "../src/shell.js";
+import { registerShellCommands, buildProgramManPage, configureManHelp } from "../src/shell.js";
 
 describe("registerShellCommands()", () => {
   let output: string;
@@ -102,5 +102,44 @@ describe("registerShellCommands()", () => {
       ).toThrow("exit");
       expect(exitSpy).toHaveBeenCalledWith(2);
     });
+  });
+});
+
+describe("buildProgramManPage()", () => {
+  it("generates valid roff with TH header", () => {
+    const program = new Command("test-cli").description("Test CLI");
+    program.command("hello").description("Say hello").option("--name <n>", "Your name");
+    const roff = buildProgramManPage(program, "test-cli", "1.0.0");
+    expect(roff).toContain('.TH "TEST-CLI"');
+    expect(roff).toContain(".SH COMMANDS");
+    expect(roff).toContain("hello");
+    expect(roff).toContain("\\-\\-name");
+  });
+
+  it("includes nested subcommands", () => {
+    const program = new Command("mycli");
+    const group = program.command("group").description("A group");
+    group.command("sub").description("A sub").option("--flag", "A flag");
+    const roff = buildProgramManPage(program, "mycli", "1.0.0");
+    expect(roff).toContain("mycli group sub");
+    expect(roff).toContain("\\-\\-flag");
+  });
+
+  it("excludes help and version options", () => {
+    const program = new Command("mycli").version("1.0.0");
+    program.command("cmd").description("A command");
+    const roff = buildProgramManPage(program, "mycli", "1.0.0");
+    expect(roff).not.toContain("display help for command");
+    expect(roff).not.toContain("output the version number");
+  });
+});
+
+describe("configureManHelp()", () => {
+  it("adds --man as a hidden option", () => {
+    const program = new Command("test-cli").exitOverride();
+    configureManHelp(program, "test-cli", "1.0.0");
+    const manOpt = program.options.find((o) => o.long === "--man");
+    expect(manOpt).toBeDefined();
+    expect((manOpt as any).hidden).toBe(true);
   });
 });

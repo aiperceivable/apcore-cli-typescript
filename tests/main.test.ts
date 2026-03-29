@@ -129,6 +129,22 @@ describe("buildModuleCommand()", () => {
     expect(longFlags).toContain("--count");
   });
 
+  it("hides built-in options from help by default", () => {
+    const cmd = buildModuleCommand(makeMod("test.mod"), makeExecutor());
+    const hiddenLongs = cmd.options.filter((o) => (o as any).hidden).map((o) => o.long);
+    expect(hiddenLongs).toContain("--input");
+    expect(hiddenLongs).toContain("--format");
+    expect(hiddenLongs).toContain("--sandbox");
+    expect(hiddenLongs).toContain("--large-input");
+    expect(hiddenLongs).toContain("--yes");
+  });
+
+  it("shows built-in options in help when verboseHelp is true", () => {
+    const cmd = buildModuleCommand(makeMod("test.mod"), makeExecutor(), 1000, undefined, true);
+    const hiddenLongs = cmd.options.filter((o) => (o as any).hidden).map((o) => o.long);
+    expect(hiddenLongs).not.toContain("--input");
+  });
+
   it("does not crash when inputSchema has no properties", () => {
     const cmd = buildModuleCommand(makeMod("test.mod", "Test", { type: "object" }), makeExecutor());
     expect(cmd.name()).toBe("test.mod");
