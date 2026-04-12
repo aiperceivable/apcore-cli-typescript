@@ -5,6 +5,24 @@ All notable changes to apcore-cli (TypeScript SDK) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-12
+
+### Added
+
+- **FE-12: Module Exposure Filtering** — Declarative control over which discovered modules are exposed as CLI commands.
+  - `ExposureFilter` class in `exposure.ts` with `isExposed(moduleId)` and `filterModules(ids)` methods.
+  - Three modes: `all` (default), `include` (whitelist), `exclude` (blacklist) with glob-pattern matching.
+  - `ExposureFilter.fromConfig(obj)` static method for loading from `apcore.yaml` `expose` section.
+  - `CreateCliOptions.expose` field accepting object or `ExposureFilter` instance.
+  - `list --exposure {exposed,hidden,all}` filter flag in discovery commands.
+  - `GroupedModuleGroup` integration: applies exposure filter during command registration.
+  - `ConfigResolver` gains `expose.*` config keys.
+  - 4-tier config precedence: `CreateCliOptions.expose` > `--expose-mode` CLI flag > env var > `apcore.yaml`.
+  - Hidden modules remain invocable via `exec <module_id>`.
+- New file: `exposure.ts`.
+
+---
+
 ## [0.6.0] - 2026-04-06
 
 ### Changed
