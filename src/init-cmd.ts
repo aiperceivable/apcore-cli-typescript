@@ -34,6 +34,7 @@ export function {funcName}(): Record<string, unknown> {
 `;
 
 const BINDING_TEMPLATE = `\
+spec_version: "1.0"
 bindings:
   - module_id: "{moduleId}"
     target: "{target}"
