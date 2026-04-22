@@ -1239,3 +1239,46 @@ describe("collectInput — file-path input", () => {
     expect(exitSpy).toHaveBeenCalledWith(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// CliApprovalHandler wiring — SDK parity with apcore-cli-python (FE-11 §3.5)
+// ---------------------------------------------------------------------------
+
+describe("createCli — CliApprovalHandler wiring", () => {
+  const makeRegistry = (): import("../src/cli.js").Registry => ({
+    listModules: () => [],
+    getModule: () => undefined,
+  });
+
+  it("calls executor.setApprovalHandler when the method is available", () => {
+    const setHandler = vi.fn();
+    const executor = {
+      execute: vi.fn(),
+      setApprovalHandler: setHandler,
+    } as unknown as Executor;
+    createCli({ registry: makeRegistry(), executor, progName: "test-cli" });
+    expect(setHandler).toHaveBeenCalledTimes(1);
+    // The wired object should quack like CliApprovalHandler — at minimum
+    // expose requestApproval / checkApproval.
+    const handler = setHandler.mock.calls[0][0];
+    expect(typeof handler.requestApproval).toBe("function");
+    expect(typeof handler.checkApproval).toBe("function");
+  });
+
+  it("silently skips wiring when executor lacks setApprovalHandler", () => {
+    const executor = { execute: vi.fn() } as unknown as Executor;
+    expect(() =>
+      createCli({ registry: makeRegistry(), executor, progName: "test-cli" }),
+    ).not.toThrow();
+  });
+
+  it("survives a throwing setApprovalHandler (non-fatal path)", () => {
+    const executor = {
+      execute: vi.fn(),
+      setApprovalHandler: () => { throw new Error("boom"); },
+    } as unknown as Executor;
+    expect(() =>
+      createCli({ registry: makeRegistry(), executor, progName: "test-cli" }),
+    ).not.toThrow();
+  });
+});

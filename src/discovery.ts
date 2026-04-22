@@ -54,7 +54,10 @@ function getAnnotationFlag(moduleDef: ModuleDescriptor, flag: string): boolean {
   const annotations = moduleDef.annotations;
   if (!annotations || typeof annotations !== "object") return false;
   const ann = annotations as Record<string, unknown>;
-  // Map CLI flag names to annotation property names
+  // Map CLI flag names to annotation property names.
+  // Keep in sync with apcore ModuleAnnotations: the 6 pre-0.19.0 boolean
+  // fields plus `paginated` (added in apcore 0.19.0). Parity with
+  // ../apcore-cli-python/src/apcore_cli/discovery.py `_ann_map`.
   const map: Record<string, string> = {
     "destructive": "destructive",
     "requires-approval": "requires_approval",
@@ -62,6 +65,7 @@ function getAnnotationFlag(moduleDef: ModuleDescriptor, flag: string): boolean {
     "streaming": "streaming",
     "cacheable": "cacheable",
     "idempotent": "idempotent",
+    "paginated": "paginated",
   };
   const attr = map[flag] ?? flag;
   return ann[attr] === true;

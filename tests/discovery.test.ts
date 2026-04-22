@@ -384,3 +384,49 @@ describe("registerValidateCommand() attachment", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// --annotation filter — paginated (apcore 0.19.0 field) parity with Python
+// ---------------------------------------------------------------------------
+
+describe("registerListCommand() --annotation paginated (apcore 0.19.0)", () => {
+  let output: string;
+
+  beforeEach(() => {
+    output = "";
+    vi.spyOn(process.stdout, "write").mockImplementation(
+      (chunk: string | Uint8Array) => {
+        output += typeof chunk === "string" ? chunk : chunk.toString();
+        return true;
+      },
+    );
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("filters modules by the 'paginated' annotation (added in apcore 0.19.0)", () => {
+    const apcliGroup = new Command("apcli");
+    const paged: ModuleDescriptor = {
+      id: "reports.list",
+      name: "reports.list",
+      description: "Paged report list",
+      annotations: { paginated: true },
+    };
+    const unpaged: ModuleDescriptor = {
+      id: "reports.count",
+      name: "reports.count",
+      description: "Scalar report count",
+      annotations: { paginated: false },
+    };
+    registerListCommand(apcliGroup, makeRegistry([paged, unpaged]));
+    apcliGroup.parse(
+      ["list", "--format", "json", "-a", "paginated"],
+      { from: "user" },
+    );
+    const parsed = JSON.parse(output);
+    expect(parsed.map((m: { id: string }) => m.id)).toEqual(["reports.list"]);
+  });
+});

@@ -20,6 +20,7 @@ import { setLogLevel, warn as logWarn } from "./logger.js";
 import { registerInitCommand } from "./init-cmd.js";
 import { getDisplay } from "./display-helpers.js";
 import { ConfigResolver, registerConfigNamespace } from "./config.js";
+import { CliApprovalHandler } from "./approval.js";
 import { configureManHelp, registerCompletionCommand } from "./shell.js";
 import {
   registerDescribeCommand,
@@ -325,6 +326,22 @@ export function createCli(
   if (executor && !registry) {
     process.stderr.write("Error: executor requires registry — pass both or neither\n");
     process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+  }
+
+  // Wire CliApprovalHandler to the executor (FE-11 §3.5) so module calls that
+  // set `requires_approval: true` route through the interactive CLI prompt
+  // (or auto-approve when APCORE_CLI_AUTO_APPROVE=1). Parity with
+  // ../apcore-cli-python/src/apcore_cli/factory.py:315-327 — previously the
+  // TypeScript CliApprovalHandler class was exported but never plugged in,
+  // so requires_approval modules were rejected by the built-in gate even
+  // though the CLI had its own interactive handler ready to use.
+  if (executor && typeof (executor as unknown as Record<string, unknown>).setApprovalHandler === "function") {
+    try {
+      const handler = new CliApprovalHandler(/*autoApprove*/ false);
+      (executor as unknown as { setApprovalHandler: (h: unknown) => void }).setApprovalHandler(handler);
+    } catch {
+      // Non-fatal: handler wiring failed; built-in gate still applies.
+    }
   }
 
   const registryInjected = registry !== undefined;
