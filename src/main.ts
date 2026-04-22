@@ -148,35 +148,6 @@ export interface OptionConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Error code mapping from apcore error codes to CLI exit codes
-// ---------------------------------------------------------------------------
-
-const ERROR_CODE_MAP: Record<string, number> = {
-  MODULE_NOT_FOUND: 44,
-  MODULE_LOAD_ERROR: 44,
-  MODULE_DISABLED: 44,
-  DEPENDENCY_NOT_FOUND: 44,
-  DEPENDENCY_VERSION_MISMATCH: 44,
-  SCHEMA_VALIDATION_ERROR: 45,
-  SCHEMA_CIRCULAR_REF: 48,
-  APPROVAL_DENIED: 46,
-  APPROVAL_TIMEOUT: 46,
-  APPROVAL_PENDING: 46,
-  CONFIG_NOT_FOUND: 47,
-  CONFIG_INVALID: 47,
-  MODULE_EXECUTE_ERROR: 1,
-  MODULE_TIMEOUT: 1,
-  ACL_DENIED: 77,
-  CONFIG_NAMESPACE_RESERVED: 78,
-  CONFIG_NAMESPACE_DUPLICATE: 78,
-  CONFIG_ENV_PREFIX_CONFLICT: 78,
-  CONFIG_ENV_MAP_CONFLICT: 78,
-  CONFIG_MOUNT_ERROR: 66,
-  CONFIG_BIND_ERROR: 65,
-  ERROR_FORMATTER_DUPLICATE: 70,
-};
-
-// ---------------------------------------------------------------------------
 // Enhanced error output (F3)
 // ---------------------------------------------------------------------------
 
@@ -1174,11 +1145,7 @@ export function buildModuleCommand(
       formatExecResult(result, outputFormat, outputFields);
     } catch (err: unknown) {
       // Enhanced error output (F3)
-      const errRecord = err as Record<string, unknown>;
-      const errorCode = typeof errRecord?.code === "string" ? errRecord.code as string : undefined;
-      const exitCode = errorCode && errorCode in ERROR_CODE_MAP
-        ? ERROR_CODE_MAP[errorCode]
-        : exitCodeForError(err);
+      const exitCode = exitCodeForError(err);
 
       // Audit log (error)
       try {

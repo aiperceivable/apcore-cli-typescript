@@ -133,6 +133,16 @@ describe("exitCodeForError", () => {
     expect(exitCodeForError(err)).toBe(EXIT_CODES.CONFIG_ENV_PREFIX_CONFLICT);
   });
 
+  it("maps CONFIG_ENV_MAP_CONFLICT to exit code 78", () => {
+    const err = Object.assign(new Error("test"), { code: "CONFIG_ENV_MAP_CONFLICT" });
+    expect(exitCodeForError(err)).toBe(EXIT_CODES.CONFIG_ENV_MAP_CONFLICT);
+  });
+
+  it("maps SCHEMA_CIRCULAR_REF to exit code 48", () => {
+    const err = Object.assign(new Error("test"), { code: "SCHEMA_CIRCULAR_REF" });
+    expect(exitCodeForError(err)).toBe(EXIT_CODES.SCHEMA_CIRCULAR_REF);
+  });
+
   it("maps CONFIG_MOUNT_ERROR to exit code 66", () => {
     const err = Object.assign(new Error("test"), { code: "CONFIG_MOUNT_ERROR" });
     expect(exitCodeForError(err)).toBe(EXIT_CODES.CONFIG_MOUNT_ERROR);
