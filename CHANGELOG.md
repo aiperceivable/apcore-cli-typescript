@@ -5,10 +5,13 @@ All notable changes to apcore-cli (TypeScript SDK) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-04-21
+## [0.7.0] - 2026-04-23
 
 ### Added
 
+- **Canonical clap v4 / GNU-style help formatter** (`src/canonical-help.ts`) overriding Commander's default `formatHelp` so `--help` output is byte-stable across SDK implementations. Disables terminal-width wrapping, uppercases `<PLACEHOLDER>`s, enforces `Commands:` before `Options:`, and renders `-h, --help` / `-V, --version` last with `Print help` / `Print version` descriptions.
+- **Cross-language conformance test harness** (`tests/conformance/apcli-visibility.test.ts`) now consumes the shared fixtures from the `aiperceivable/apcore-cli` spec repo (`conformance/fixtures/apcli-visibility/`). Dynamically discovers scenarios and byte-matches `--help` output against each `expected_help.txt`. Set `APCORE_CLI_SPEC_REPO` to point at a non-sibling checkout; defaults to `../apcore-cli/`.
+- **CI — spec-repo checkout**: `.github/workflows/ci.yml` now checks out `aiperceivable/apcore-cli` into `.apcore-cli-spec/` and exposes it to `pnpm test` via `APCORE_CLI_SPEC_REPO`.
 - **FE-13: Built-in command group (`apcli`)** — consolidates the 13 canonical built-in commands (`list`, `describe`, `exec`, `validate`, `init`, `health`, `usage`, `enable`, `disable`, `reload`, `config`, `completion`, `describe-pipeline`) under a single `apcli` sub-group. Invocation shifts from `<cli> list` to `<cli> apcli list`.
   - `ApcliGroup` class + `ApcliConfig` / `ApcliMode` types, exported from `src/index.ts`.
   - `RESERVED_GROUP_NAMES = new Set(["apcli"])` as the enforced collision surface (replaces the retired per-command `BUILTIN_COMMANDS` constant).
