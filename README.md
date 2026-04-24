@@ -210,35 +210,35 @@ The canonical 13 `apcli` subcommands:
 
 | Command | Description |
 |---------|-------------|
-| `apcli list` | List available modules with search, status, tag/annotation filters, sort, and dependency inspection (see `src/commands/list-cmd.ts`) |
-| `apcli describe <module_id>` | Show full module metadata, schemas, and annotations (see `src/commands/describe-cmd.ts`) |
-| `apcli describe-pipeline <module_id>` | Inspect the execution pipeline for a module (strategies, hooks, middleware; see `src/commands/describe-pipeline-cmd.ts`) |
-| `apcli exec <module_id>` | Internal routing alias for module execution (see `src/commands/exec-cmd.ts`) |
-| `apcli usage <module_id>` | Show usage examples and flag hints for a module (see `src/commands/usage-cmd.ts`) |
+| `apcli list` | List available modules with search, status, tag/annotation filters, sort, and dependency inspection (see `registerListCommand` in `src/discovery.ts`) |
+| `apcli describe <module_id>` | Show full module metadata, schemas, and annotations (see `registerDescribeCommand` in `src/discovery.ts`) |
+| `apcli describe-pipeline <module_id>` | Inspect the execution pipeline for a module (strategies, hooks, middleware; see `registerPipelineCommand` in `src/strategy.ts`) |
+| `apcli exec <module_id>` | Internal routing alias for module execution (see `registerExecCommand` in `src/discovery.ts`) |
+| `apcli usage <module_id>` | Show usage examples and flag hints for a module (see `registerUsageCommand` in `src/system-cmd.ts`) |
 
 **System management**
 
 | Command | Description |
 |---------|-------------|
-| `apcli config` | Inspect effective configuration and precedence (see `src/commands/system-cmd.ts`) |
-| `apcli health` | Run health checks on registry, executor, config, and auth (see `src/commands/system-cmd.ts`) |
-| `apcli reload` | Reload registry / rediscover extensions (see `src/commands/system-cmd.ts`) |
-| `apcli enable <module_id>` | Enable a disabled module (see `src/commands/system-cmd.ts`) |
-| `apcli disable <module_id>` | Disable a module without removing it (see `src/commands/system-cmd.ts`) |
+| `apcli config` | Inspect effective configuration and precedence (see `registerConfigCommand` in `src/system-cmd.ts`) |
+| `apcli health` | Run health checks on registry, executor, config, and auth (see `registerHealthCommand` in `src/system-cmd.ts`) |
+| `apcli reload` | Reload registry / rediscover extensions (see `registerReloadCommand` in `src/system-cmd.ts`) |
+| `apcli enable <module_id>` | Enable a disabled module (see `registerEnableCommand` in `src/system-cmd.ts`) |
+| `apcli disable <module_id>` | Disable a module without removing it (see `registerDisableCommand` in `src/system-cmd.ts`) |
 
 **Workflow**
 
 | Command | Description |
 |---------|-------------|
-| `apcli init` | Scaffold a starter `apcore.yaml` / extensions layout (see `src/commands/init-cmd.ts`) |
-| `apcli validate` | Validate modules and configuration against JSON Schema (see `src/commands/validate-cmd.ts`) |
+| `apcli init` | Scaffold a starter `apcore.yaml` / extensions layout (see `registerInitCommand` in `src/init-cmd.ts`) |
+| `apcli validate` | Validate modules and configuration against JSON Schema (see `registerValidateCommand` in `src/discovery.ts`) |
 
 **Shell integration**
 
 | Command | Description |
 |---------|-------------|
-| `apcli completion <shell>` | Generate shell completion script for bash / zsh / fish (see `src/commands/completion-cmd.ts`) |
-| `man [command]` (root) | Generate a man page in roff format for a single command or the whole program (see `src/man.ts`). Stays at the root (meta-command). |
+| `apcli completion <shell>` | Generate shell completion script for bash / zsh / fish (see `registerCompletionCommand` in `src/shell.ts`) |
+| `man [command]` (root) | Generate a man page in roff format for a single command or the whole program (see `configureManHelp` in `src/shell.ts`). Stays at the root (meta-command). |
 
 #### Standalone vs. embedded surfaces
 

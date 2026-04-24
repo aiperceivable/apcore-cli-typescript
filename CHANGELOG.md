@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ApcliGroup` class + `ApcliConfig` / `ApcliMode` types, exported from `src/index.ts`.
   - `RESERVED_GROUP_NAMES = new Set(["apcli"])` as the enforced collision surface (replaces the retired per-command `BUILTIN_COMMANDS` constant).
   - New env var `APCORE_CLI_APCLI` — accepts `show`, `hide`, `1`, `0`, `true`, `false` (case-insensitive).
-  - New config keys (snake_case DEFAULTS): `cli.apcli.mode`, `cli.apcli.include`, `cli.apcli.exclude`, `cli.apcli.disable_env`.
+  - New config keys (snake_case DEFAULTS): `apcli.mode`, `apcli.include`, `apcli.exclude`, `apcli.disable_env`.
   - `ConfigResolver.resolveObject(key)` — non-leaf accessor that returns object-shaped config values without flattening.
   - `createCli({ apcli })` option — accepts `boolean | object | ApcliGroup` to configure the built-in group surface.
   - See [migration guide](../apcore-cli/docs/features/builtin-group.md#11-migration) for the full v0.7 → v0.8 timeline.

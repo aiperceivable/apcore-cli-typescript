@@ -160,16 +160,16 @@ describe("schemaToCliOptions()", () => {
   // Boolean flags
   it("generates --flag/--no-flag pair for boolean type", () => {
     const opts = schemaToCliOptions({
-      properties: { verbose: { type: "boolean" } },
+      properties: { debug: { type: "boolean" } },
     });
-    expect(opts[0].flags).toBe("--verbose, --no-verbose");
+    expect(opts[0].flags).toBe("--debug, --no-debug");
     expect(opts[0].isBooleanFlag).toBe(true);
     expect(opts[0].defaultValue).toBe(false);
   });
 
   it("uses boolean default from schema", () => {
     const opts = schemaToCliOptions({
-      properties: { verbose: { type: "boolean", default: true } },
+      properties: { debug: { type: "boolean", default: true } },
     });
     expect(opts[0].defaultValue).toBe(true);
   });
@@ -243,6 +243,37 @@ describe("schemaToCliOptions()", () => {
     expect(() =>
       schemaToCliOptions({
         properties: { format: { type: "string" } },
+      }),
+    ).toThrow("exit");
+    expect(exitSpy).toHaveBeenCalledWith(2);
+  });
+
+  it("exits 2 for 'dry_run' reserved name (snake_case F1 preflight flag)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit");
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    expect(() =>
+      schemaToCliOptions({
+        properties: { dry_run: { type: "boolean" } },
+      }),
+    ).toThrow("exit");
+    expect(exitSpy).toHaveBeenCalledWith(2);
+  });
+
+  it.each([
+    "fields", "verbose", "trace", "stream", "strategy",
+    "approval_timeout", "approval_token", "large_input",
+  ])("exits 2 for '%s' reserved name", (propName) => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit");
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    expect(() =>
+      schemaToCliOptions({
+        properties: { [propName]: { type: "string" } },
       }),
     ).toThrow("exit");
     expect(exitSpy).toHaveBeenCalledWith(2);

@@ -75,7 +75,7 @@
 - v0.7.x ships root-level deprecation shims that warn and forward to
   `apcli <name>` in standalone mode only. Removed in v0.8.
 - New env var: `APCORE_CLI_APCLI` (show/hide/1/0/true/false).
-- New config keys: `cli.apcli.mode`, `cli.apcli.include`,
-  `cli.apcli.exclude`, `cli.apcli.disable_env`.
+- New config keys: `apcli.mode`, `apcli.include`,
+  `apcli.exclude`, `apcli.disable_env`.
 - `ConfigResolver.resolveObject(key)` reads nested (non-flattened)
   config values.

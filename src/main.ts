@@ -926,21 +926,6 @@ export function buildModuleCommand(
     cmd.addHelpText("after", "\n" + footerParts.join("\n") + "\n");
   }
 
-  // Guard: schema property names must not collide with built-in option names.
-  const reservedNames = new Set([
-    "input", "yes", "largeInput", "format", "fields", "sandbox", "verbose",
-    "dryRun", "trace", "stream", "strategy", "approvalTimeout", "approvalToken",
-  ]);
-  for (const opt of schemaOptions) {
-    if (reservedNames.has(opt.name)) {
-      process.stderr.write(
-        `Error: Module '${moduleId}' schema property '${opt.name}' conflicts ` +
-        `with a reserved CLI option name. Rename the property.\n`,
-      );
-      process.exit(EXIT_CODES.INVALID_CLI_INPUT);
-    }
-  }
-
   // Schema-generated options
   for (const opt of schemaOptions) {
     if (opt.parseArg) {
