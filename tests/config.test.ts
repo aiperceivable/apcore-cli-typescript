@@ -88,6 +88,16 @@ describe("ConfigResolver", () => {
       expect(DEFAULTS).not.toHaveProperty("apcore-cli.help_text_max_length");
       expect(DEFAULTS).not.toHaveProperty("apcore-cli.logging_level");
     });
+
+    it("test_config_defaults_no_apcli_keys: DEFAULTS does not contain apcli.* keys", () => {
+      // D11-008: apcli.* keys are redundant in DEFAULTS — resolved via
+      // resolveObject('apcli') at runtime (raw yaml walk), not via resolve().
+      expect(DEFAULTS).not.toHaveProperty("apcli.mode");
+      expect(DEFAULTS).not.toHaveProperty("apcli.include");
+      expect(DEFAULTS).not.toHaveProperty("apcli.exclude");
+      expect(DEFAULTS).not.toHaveProperty("apcli.disable_env");
+      expect(DEFAULTS).not.toHaveProperty("apcli");
+    });
   });
 
   // ---- Task 2: 4-tier precedence ----
@@ -277,33 +287,16 @@ describe("ConfigResolver", () => {
 
   // ---- Task 5: apcli.* DEFAULTS + resolveObject (FE-13) ----
 
-  describe("apcli DEFAULTS keys (FE-13)", () => {
-    it("DEFAULTS contains the 5 new snake_case apcli keys", () => {
-      expect(DEFAULTS).toHaveProperty("apcli");
-      expect(DEFAULTS).toHaveProperty("apcli.mode");
-      expect(DEFAULTS).toHaveProperty("apcli.include");
-      expect(DEFAULTS).toHaveProperty("apcli.exclude");
-      expect(DEFAULTS).toHaveProperty("apcli.disable_env");
-    });
-
-    it("DEFAULTS apcli root is null (object is absent by default)", () => {
-      expect(DEFAULTS["apcli"]).toBeNull();
-    });
-
-    it("DEFAULTS apcli.mode is null by default", () => {
-      expect(DEFAULTS["apcli.mode"]).toBeNull();
-    });
-
-    it("DEFAULTS apcli.include is empty array", () => {
-      expect(DEFAULTS["apcli.include"]).toEqual([]);
-    });
-
-    it("DEFAULTS apcli.exclude is empty array", () => {
-      expect(DEFAULTS["apcli.exclude"]).toEqual([]);
-    });
-
-    it("DEFAULTS apcli.disable_env is false", () => {
-      expect(DEFAULTS["apcli.disable_env"]).toBe(false);
+  describe("apcli DEFAULTS keys (FE-13 / D11-008)", () => {
+    it("DEFAULTS does NOT contain apcli.* flat keys (D11-008)", () => {
+      // D11-008: these entries were removed because the runtime reads apcli.*
+      // via resolveObject('apcli') (raw yaml walk), not via resolve().
+      // Python and Rust have no such entries either.
+      expect(DEFAULTS).not.toHaveProperty("apcli");
+      expect(DEFAULTS).not.toHaveProperty("apcli.mode");
+      expect(DEFAULTS).not.toHaveProperty("apcli.include");
+      expect(DEFAULTS).not.toHaveProperty("apcli.exclude");
+      expect(DEFAULTS).not.toHaveProperty("apcli.disable_env");
     });
   });
 
@@ -382,10 +375,11 @@ describe("ConfigResolver", () => {
   });
 
   describe("scalar resolve() regression (FE-13)", () => {
-    it("resolve('apcli.mode') returns null when unset (DEFAULTS null)", () => {
+    it("resolve('apcli.mode') returns undefined when unset (no DEFAULTS entry)", () => {
+      // D11-008: apcli.mode was removed from DEFAULTS; resolve() returns undefined.
       mockFileNotFound();
       const resolver = new ConfigResolver();
-      expect(resolver.resolve("apcli.mode")).toBeNull();
+      expect(resolver.resolve("apcli.mode")).toBeUndefined();
     });
 
     it("resolve('apcli.mode') returns value from file via flattened path", () => {
@@ -412,10 +406,11 @@ describe("ConfigResolver", () => {
       expect(resolver.resolve("apcli.include")).toEqual(["list", "describe"]);
     });
 
-    it("resolve('apcli.disable_env') returns false DEFAULT when unset", () => {
+    it("resolve('apcli.disable_env') returns undefined when unset (no DEFAULTS entry)", () => {
+      // D11-008: apcli.disable_env was removed from DEFAULTS.
       mockFileNotFound();
       const resolver = new ConfigResolver();
-      expect(resolver.resolve("apcli.disable_env")).toBe(false);
+      expect(resolver.resolve("apcli.disable_env")).toBeUndefined();
     });
   });
 

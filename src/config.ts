@@ -38,14 +38,10 @@ export const DEFAULTS: Record<string, unknown> = {
   "expose.mode": "all",
   "expose.include": [],
   "expose.exclude": [],
-  // Builtin group visibility (FE-13) — snake_case dot-notation.
-  // `apcli` root is null by default (object absent); sub-keys carry the
-  // per-field defaults consumed by the Tier 3 visibility resolver.
-  apcli: null,
-  "apcli.mode": null,
-  "apcli.include": [],
-  "apcli.exclude": [],
-  "apcli.disable_env": false,
+  // Builtin group visibility (FE-13) — apcli.* keys are NOT in DEFAULTS.
+  // The runtime reads them via resolveObject('apcli') (raw yaml walk) and
+  // does not use the flat-key resolve() path. Python and Rust have no such
+  // entries either. (D11-008 cleanup)
 };
 
 /**
