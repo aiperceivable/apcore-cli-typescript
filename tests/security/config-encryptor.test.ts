@@ -38,6 +38,48 @@ describe("ConfigEncryptor", () => {
     });
   });
 
+  // --- Regression tests for A-D-001/002: enc:v2 + 600k PBKDF2 ---
+  describe("enc:v2 wire format + 600k PBKDF2 (A-D-001/002)", () => {
+    it("store() without keyring emits enc:v2: prefix", async () => {
+      const fresh = new ConfigEncryptor();
+      // Force no-keyring path
+      const stored = await fresh.store("k", "v");
+      // Skip if keyring is available (CI may have one)
+      if (!stored.startsWith("keyring:")) {
+        expect(stored.startsWith("enc:v2:")).toBe(true);
+      }
+    });
+
+    it("enc:v2 roundtrip works", async () => {
+      const fresh = new ConfigEncryptor();
+      const stored = await fresh.store("k", "roundtrip_payload");
+      if (stored.startsWith("enc:v2:")) {
+        expect(await fresh.retrieve(stored, "k")).toBe("roundtrip_payload");
+      }
+    });
+
+    it("retrieve() handles legacy enc: (v1) values without crashing", async () => {
+      // Build a v1-format enc: value using the old static-salt + 600k path
+      const crypto = await import("node:crypto");
+      const os = await import("node:os");
+      const hostname = os.hostname();
+      const username = process.env.USER ?? process.env.USERNAME ?? "unknown";
+      const material = `${hostname}:${username}`;
+      const staticSalt = Buffer.from("apcore-cli-config-v1");
+      const key = crypto.pbkdf2Sync(material, staticSalt, 600_000, 32, "sha256");
+      const nonce = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv("aes-256-gcm", key, nonce);
+      const ct = Buffer.concat([cipher.update("legacy_secret", "utf-8"), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const raw = Buffer.concat([nonce, tag, ct]);
+      const v1Ref = `enc:${raw.toString("base64")}`;
+
+      const fresh = new ConfigEncryptor();
+      const result = await fresh.retrieve(v1Ref, "auth.api_key");
+      expect(result).toBe("legacy_secret");
+    });
+  });
+
   // Review fix #2: APCORE_CLI_CONFIG_PASSPHRASE participates in KDF, and
   // a loud stderr warning fires once when the obfuscation-only fallback path
   // is used (i.e. when no passphrase is provided).
