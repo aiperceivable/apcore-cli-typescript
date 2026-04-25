@@ -141,6 +141,30 @@ export class ApcliGroup {
     );
   }
 
+  /**
+   * Non-panicking Tier 3 factory (A-001 parity with Rust's `try_from_yaml`).
+   * Returns `[instance, null]` on success or `[null, errorMessage]` on invalid input.
+   * Use this in programmatic contexts where throwing/exiting is unwanted.
+   */
+  static tryFromYaml(
+    config: unknown,
+    opts: { registryInjected: boolean },
+  ): [ApcliGroup, null] | [null, string] {
+    if (config !== null && config !== undefined && typeof config !== "boolean" && typeof config !== "object") {
+      return [null, `apcore.yaml 'apcli:' must be a bool, object, or null; got ${typeof config}`];
+    }
+    if (config !== null && config !== undefined && typeof config === "object" && !Array.isArray(config)) {
+      const mode = (config as Record<string, unknown>)["mode"];
+      if (mode !== undefined && mode !== null) {
+        const validModes = ["all", "none", "include", "exclude"];
+        if (typeof mode !== "string" || !validModes.includes(mode)) {
+          return [null, `Invalid apcli mode: '${mode}'. Must be one of: all, none, include, exclude.`];
+        }
+      }
+    }
+    return [ApcliGroup.fromYaml(config, opts), null];
+  }
+
   // -------------------------------------------------------------------------
   // Internal builder — shared by both factories
   // -------------------------------------------------------------------------
