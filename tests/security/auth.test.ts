@@ -63,6 +63,23 @@ describe("AuthProvider", () => {
     });
   });
 
+  describe("decryption error wrapping (A-D-009)", () => {
+    it("wraps ConfigDecryptionError as AuthenticationError from getApiKey()", async () => {
+      const { ConfigDecryptionError } = await import("../../src/errors.js");
+      const { ConfigEncryptor } = await import("../../src/security/config-encryptor.js");
+      const config = new ConfigResolver(undefined, undefined);
+      // Inject enc:v2: value so the encryptor path is reached
+      vi.spyOn(config, "resolve").mockReturnValue("enc:v2:invalid_payload");
+      const mockEnc = {
+        retrieve: vi.fn().mockRejectedValue(new ConfigDecryptionError("bad")),
+        store: vi.fn(),
+      } as unknown as ConfigEncryptor;
+      const auth = new AuthProvider(config, mockEnc);
+      await expect(auth.getApiKey()).rejects.toThrow(AuthenticationError);
+      await expect(auth.getApiKey()).rejects.not.toThrow(ConfigDecryptionError);
+    });
+  });
+
   describe("handleResponse()", () => {
     it("throws AuthenticationError on 401", () => {
       const config = new ConfigResolver();

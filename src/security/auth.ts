@@ -5,7 +5,7 @@
  */
 
 import type { ConfigResolver } from "../config.js";
-import { AuthenticationError } from "../errors.js";
+import { AuthenticationError, ConfigDecryptionError } from "../errors.js";
 import { ConfigEncryptor } from "./config-encryptor.js";
 
 // ---------------------------------------------------------------------------
@@ -39,7 +39,17 @@ export class AuthProvider {
     }
     const strResult = String(result);
     if (strResult.startsWith("keyring:") || strResult.startsWith("enc:")) {
-      return this.encryptor.retrieve(strResult, "auth.api_key");
+      try {
+        return await this.encryptor.retrieve(strResult, "auth.api_key");
+      } catch (err) {
+        if (err instanceof ConfigDecryptionError) {
+          throw new AuthenticationError(
+            "Failed to decrypt stored API key. " +
+              "Re-configure with 'apcore-cli config set auth.api_key'.",
+          );
+        }
+        throw err;
+      }
     }
     return strResult;
   }
