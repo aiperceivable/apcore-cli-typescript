@@ -171,9 +171,9 @@ export async function runSandboxRunner(moduleId: string): Promise<void> {
     return;
   }
 
-  const registry = new apcore.Registry(extensionsRoot);
+  const registry = new apcore.Registry({ extensionsDir: extensionsRoot });
   await registry.discover();
-  const executor = new apcore.Executor(registry);
+  const executor = new apcore.Executor({ registry });
   try {
     const result = await executor.call(moduleId, inputData);
     process.stdout.write(JSON.stringify(result));
