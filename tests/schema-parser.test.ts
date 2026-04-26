@@ -349,3 +349,48 @@ describe("reconvertEnumValues()", () => {
     expect(result.level).toBeNull();
   });
 });
+
+describe("schema_to_cli_options no-flag collision (D11-005)", () => {
+  it("rejects a schema pairing a boolean with the matching no_<name> non-boolean", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const schema = {
+      properties: {
+        force: { type: "boolean" },
+        no_force: { type: "string" },
+      },
+    };
+    expect(() => schemaToCliOptions(schema)).toThrow(/process.exit\(2\)/);
+    exitSpy.mockRestore();
+  });
+
+  it("rejects when ordering is reversed (no-form first, then boolean)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const schema = {
+      properties: {
+        no_force: { type: "string" },
+        force: { type: "boolean" },
+      },
+    };
+    expect(() => schemaToCliOptions(schema)).toThrow(/process.exit\(2\)/);
+    exitSpy.mockRestore();
+  });
+
+  it("two unrelated booleans do not collide", () => {
+    const schema = {
+      properties: {
+        force: { type: "boolean" },
+        verbose_logs: { type: "boolean" },
+      },
+    };
+    const result = schemaToCliOptions(schema);
+    expect(result).toHaveLength(2);
+  });
+});

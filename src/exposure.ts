@@ -55,11 +55,25 @@ export function globMatch(moduleId: string, pattern: string): boolean {
  * - `exclude`: all modules are exposed except those matching any exclude pattern.
  */
 export class ExposureFilter {
+  static readonly VALID_MODES = ["all", "include", "exclude", "none"] as const;
+
   readonly _mode: string;
   private readonly _compiledInclude: RegExp[];
   private readonly _compiledExclude: RegExp[];
 
   constructor(mode = "all", include?: string[], exclude?: string[]) {
+    // Cross-SDK parity with apcore-cli-rust/src/exposure.rs:70 (D11-008):
+    // unknown mode values clamp to "none" with a warning so consumers that
+    // introspect ``filter.mode`` see a consistent string across the three
+    // SDKs. Runtime exposure decision is unchanged (isExposed already
+    // fail-closes on unknown modes via its default-false branch); the
+    // clamp aligns the persisted state.
+    if (!ExposureFilter.VALID_MODES.includes(mode as (typeof ExposureFilter.VALID_MODES)[number])) {
+      process.stderr.write(
+        `Warning: Unknown ExposureFilter mode '${mode}' — defaulting to 'none'. Valid modes: ${ExposureFilter.VALID_MODES.join(", ")}.\n`,
+      );
+      mode = "none";
+    }
     this._mode = mode;
     const dedup = (arr: string[]) => [...new Set(arr)];
     this._compiledInclude = dedup(include ?? []).map(compilePattern);

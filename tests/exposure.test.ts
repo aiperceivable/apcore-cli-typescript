@@ -169,3 +169,28 @@ describe("ExposureFilter.fromConfig()", () => {
     expect(f.isExposed("webhooks.stripe")).toBe(true);
   });
 });
+
+describe("ExposureFilter unknown-mode clamp (D11-008)", () => {
+  it("clamps unknown mode to 'none' with a stderr warning", () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const f = new ExposureFilter("bogus");
+    expect(f._mode).toBe("none");
+    expect(warnSpy).toHaveBeenCalled();
+    const message = warnSpy.mock.calls.map((c) => c[0]).join("");
+    expect(message).toContain("Unknown ExposureFilter mode 'bogus'");
+    warnSpy.mockRestore();
+  });
+
+  it("still fails closed on isExposed under unknown mode", () => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const f = new ExposureFilter("totally-bogus");
+    expect(f.isExposed("anything.at.all")).toBe(false);
+  });
+
+  it("valid modes pass through unchanged", () => {
+    for (const mode of ExposureFilter.VALID_MODES) {
+      const f = new ExposureFilter(mode);
+      expect(f._mode).toBe(mode);
+    }
+  });
+});

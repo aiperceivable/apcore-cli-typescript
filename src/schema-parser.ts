@@ -121,6 +121,19 @@ export function schemaToCliOptions(
     if (typeResult === BOOLEAN_FLAG) {
       // Boolean flag pair: --flag/--no-flag
       const flagBase = propName.replace(/_/g, "-");
+      // Cross-SDK parity (D11-005): Rust schema_parser.rs:272 also tracks
+      // the auto-generated `--no-<flag>` name in the collision map so a
+      // schema pairing a boolean ``force`` with a non-boolean ``no_force``
+      // is rejected at parse time. Without this, the second property
+      // silently shadows the negation flag.
+      const noFlag = `--no-${flagBase}`;
+      if (noFlag in flagNames) {
+        process.stderr.write(
+          `Error: Flag name collision: boolean property '${propName}' auto-generates '${noFlag}' which is already used by property '${flagNames[noFlag]}'.\n`,
+        );
+        process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+      }
+      flagNames[noFlag] = propName;
       const defaultVal = (propSchema.default as boolean) ?? false;
       options.push({
         name: propName,
