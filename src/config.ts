@@ -136,9 +136,17 @@ export class ConfigResolver {
    */
   resolve(key: string, cliFlag?: string, envVar?: string): unknown {
     // Tier 1: CLI flag
-    const flagKey = cliFlag ?? key;
-    if (flagKey in this.cliFlags) {
-      const value = this.cliFlags[flagKey];
+    //
+    // Cross-SDK parity (D11-007, 2026-04-26): only consult `cliFlags` when
+    // the caller passed an explicit `cliFlag` argument. Previously this code
+    // used `cliFlag ?? key` which silently fell back to looking up the
+    // config key itself in the cliFlags map — a phantom Tier-1 lookup that
+    // could shadow file/default values when callers populated cliFlags with
+    // config-keyed entries. Python (config.py:66) and Rust (config.rs:119)
+    // skip Tier-1 entirely when the flag arg is None / missing; TS now
+    // matches.
+    if (cliFlag !== undefined && cliFlag in this.cliFlags) {
+      const value = this.cliFlags[cliFlag];
       if (value !== null && value !== undefined) {
         return value;
       }

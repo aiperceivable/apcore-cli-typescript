@@ -103,10 +103,16 @@ describe("ConfigResolver", () => {
   // ---- Task 2: 4-tier precedence ----
 
   describe("resolve() precedence", () => {
-    it("returns CLI flag value (tier 1) when present", () => {
+    it("returns CLI flag value (tier 1) when present and cliFlag is given explicitly", () => {
       mockFileNotFound();
-      const resolver = new ConfigResolver({ "extensions.root": "/custom" });
-      expect(resolver.resolve("extensions.root")).toBe("/custom");
+      // D11-007: cliFlag must be passed explicitly for Tier-1 to fire.
+      // Previously TS used `cliFlag ?? key` and would consult cliFlags
+      // even when the caller did not opt in — Python and Rust both skip
+      // Tier-1 when no flag is supplied.
+      const resolver = new ConfigResolver({ "--extensions-root": "/custom" });
+      expect(
+        resolver.resolve("extensions.root", "--extensions-root"),
+      ).toBe("/custom");
     });
 
     it("returns env var value (tier 2) when CLI flag absent", () => {
@@ -122,10 +128,10 @@ describe("ConfigResolver", () => {
       mockFileNotFound();
       process.env.MY_EXT_ROOT = "/from-env";
       const resolver = new ConfigResolver({
-        "extensions.root": "/from-cli",
+        "--extensions-root": "/from-cli",
       });
       expect(
-        resolver.resolve("extensions.root", undefined, "MY_EXT_ROOT"),
+        resolver.resolve("extensions.root", "--extensions-root", "MY_EXT_ROOT"),
       ).toBe("/from-cli");
     });
 
@@ -136,6 +142,23 @@ describe("ConfigResolver", () => {
       expect(
         resolver.resolve("extensions.root", undefined, "MY_EXT_ROOT"),
       ).toBe("/from-env");
+    });
+
+    it("D11-007: skips Tier-1 entirely when cliFlag is not passed (cross-SDK parity)", () => {
+      // Python config.py:66 and Rust config.rs:119 only consult cliFlags
+      // when an explicit flag arg is supplied. Even if cliFlags happens to
+      // contain a key that matches `key`, resolve() must not fall back to
+      // it — that would be a phantom Tier-1 lookup that shadows file /
+      // default values.
+      mockFileNotFound();
+      const resolver = new ConfigResolver({
+        "extensions.root": "/should-not-shadow",
+      });
+      // No cliFlag arg → must NOT return "/should-not-shadow", must fall
+      // through to default ("./extensions" per DEFAULTS).
+      expect(resolver.resolve("extensions.root")).not.toBe(
+        "/should-not-shadow",
+      );
     });
 
     it("config file overrides default", () => {

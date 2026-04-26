@@ -7,7 +7,15 @@
  */
 
 // Core CLI entry points
-export { createCli, main, buildModuleCommand, validateModuleId, collectInput, reconvertEnumValues, applyToolkitIntegration, verboseHelp, setVerboseHelp, docsUrl, setDocsUrl, emitErrorJson, emitErrorTty } from "./main.js";
+//
+// D9-002 (audit, 2026-04-26): the raw mutable `verboseHelp` and `docsUrl`
+// bindings were re-exported but had zero external readers across src/, tests/,
+// and examples/ — only the setter pair `setVerboseHelp` / `setDocsUrl` is used.
+// Raw `let` bindings are also unstable as a public surface (live binding
+// behaviour depends on the importer's bundler). Dropped from the re-export
+// list. Add `getVerboseHelp` / `getDocsUrl` getters in main.ts if read access
+// is later needed.
+export { createCli, main, buildModuleCommand, validateModuleId, collectInput, reconvertEnumValues, applyToolkitIntegration, setVerboseHelp, setDocsUrl, emitErrorJson, emitErrorTty } from "./main.js";
 export type { OptionConfig, CreateCliOptions, APCore } from "./main.js";
 
 // Command grouping (GroupedModuleGroup is the default click.Group; LazyModuleGroup
