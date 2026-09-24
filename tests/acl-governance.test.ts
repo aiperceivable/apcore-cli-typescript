@@ -1604,8 +1604,8 @@ rules:
   function spyOnLoad(): ACL[] {
     const loaded: ACL[] = [];
     const realLoad = ACL.load.bind(ACL);
-    vi.spyOn(ACL, "load").mockImplementation((p: string) => {
-      const acl = realLoad(p);
+    vi.spyOn(ACL, "load").mockImplementation((p: string, auditLogger?: Parameters<typeof ACL.load>[1]) => {
+      const acl = realLoad(p, auditLogger);
       loaded.push(acl);
       return acl;
     });
@@ -1724,26 +1724,31 @@ rules:
     expect(entries(logPath)).toHaveLength(0);
   });
 
-  it("T-ACL-27a: with auditing ENABLED the ACL is rebuilt — the contrast that makes the identity check discriminating", () => {
+  it("T-ACL-27a: with auditing ENABLED the callback is passed to ACL.load directly — no rebuild", () => {
     const loaded = spyOnLoad();
-    project(AUDIT_ACL);
+    const { logPath } = project(AUDIT_ACL);
     const acl = loadCliAcl("./acl");
     expect(loaded).toHaveLength(1);
-    expect(acl).not.toBe(loaded[0]);
-    // §4.8 requirement 2, stated rather than hidden: the rebuilt ACL loses
-    // `reload()`. Accepted — no apcore-cli SDK calls it, and an embedder that
-    // needs it supplies its own ACL through `createCli({ acl })`.
-    expect(() => acl!.reload()).toThrow();
+    // apcore-js 0.31.0: `ACL.load` takes the audit callback directly, so the
+    // auditing path no longer rebuilds — same object `ACL.load` returned.
+    expect(acl).toBe(loaded[0]);
+    // ...and `reload()` stays available, unlike the pre-0.31.0 rebuild.
+    expect(() => acl!.reload()).not.toThrow();
+
+    setAttachedAcl(acl);
+    expect((decide("ops.control") as { code?: string }).code).toBe("ACL_DENIED");
+    expect(entries(logPath)).toHaveLength(1);
   });
 
-  it("T-ACL-27b: default_effect: allow survives the rebuild, and an unmatched call is PERMITTED", () => {
+  it("T-ACL-27b: default_effect: allow is preserved with auditing enabled, and an unmatched call is PERMITTED", () => {
     const { logPath } = project(ALLOW_DEFAULT_ACL);
     const acl = loadCliAcl("./acl");
     expect(acl).not.toBeNull();
 
-    // §4.8 requirement 1. A rebuild passing a literal "deny" inverts the
-    // governing default of every call no rule matched — silently, and every
-    // test using a `deny`-defaulted file passes against that defect.
+    // §4.8 requirement 1. `ACL.load(path, auditLogger)` reads `defaultEffect`
+    // straight from the file — a literal `"deny"` passed anywhere in this path
+    // would silently invert the governing default of every call no rule
+    // matched, and every test using a `deny`-defaulted file would pass anyway.
     expect(acl!.defaultEffect).toBe("allow");
 
     setAttachedAcl(acl);
@@ -1764,8 +1769,8 @@ rules:
   it("T-ACL-27c: an embedder-supplied ACL is attached unchanged, never rebuilt", () => {
     const dir = scratch();
     process.chdir(dir);
-    // Auditing is ON (the default) — this is the case where a rebuild would
-    // otherwise happen.
+    // Auditing is ON (the default). An embedder-supplied ACL never goes
+    // through `ACL.load` at all — §4.2 attaches it exactly as handed in.
     expect(aclAuditEnabled(new ConfigResolver())).toBe(true);
 
     const { acl, dir: aclDir } = aclFrom(CLEAN_ACL);

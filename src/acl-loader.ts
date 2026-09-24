@@ -224,43 +224,6 @@ export function createAclAuditCallback(includeDenied: boolean): AclAuditCallback
 }
 
 /**
- * Attach the audit callback to a freshly loaded ACL (FE-14 §4.8).
- *
- * `ACL.load` takes no callback, and no SDK offers a lossless attach after the
- * fact, so the CLI reads the file and constructs the ACL it actually attaches:
- *
- * ```ts
- * const src = ACL.load(resolvedPath);
- * const acl = new ACL(src.rules, src.defaultEffect, auditCallback);
- * ```
- *
- * Two load-bearing properties of that construction:
- *
- * 1. **`defaultEffect` is carried from the source ACL, never hardcoded.** A
- *    file may legitimately declare `default_effect: allow`; passing a literal
- *    `"deny"` would silently invert the governing default of every call no rule
- *    matched, and every test written against a `deny`-defaulted file would pass
- *    anyway. Only `src.defaultEffect` reproduces the file.
- * 2. **The rebuilt ACL loses `reload()`**, which needs the `_yamlPath` only
- *    `ACL.load` sets. Accepted and documented rather than worked around: no
- *    apcore-cli SDK calls `reload()` on any path, and an embedder that needs it
- *    supplies its own ACL through `createCli({ acl })`, which §4.2 attaches
- *    unchanged and never rebuilds.
- *
- * With auditing disabled the loaded ACL is returned AS IS — no rebuild, no
- * callback — so the `reload()` caveat applies to the auditing path only.
- */
-export function withAclAudit(src: ACL, config?: ConfigResolver | null): ACL {
-  if (!aclAuditEnabled(config)) return src;
-  return new ACL(
-    // `rules` is a frozen snapshot; the constructor wants a mutable array.
-    [...src.rules],
-    src.defaultEffect,
-    createAclAuditCallback(aclAuditIncludeDenied(config)),
-  );
-}
-
-/**
  * Load an ACL from a resolved root (FE-14 §4.2).
  *
  * Applies exactly the directory convention apcore's `ACL.discover` documents:
@@ -269,9 +232,9 @@ export function withAclAudit(src: ACL, config?: ConfigResolver | null): ACL {
  * 2. Path is a directory        → load `<root>/global_acl.yaml`; absent → `null`.
  * 3. Path is a file             → load it directly.
  *
- * On success the FE-14 §4.8 audit callback is attached (see
- * {@link withAclAudit}) unless `acl.audit.enabled` is false, in which case the
- * `ACL.load` result is returned directly.
+ * On success the FE-14 §4.8 audit callback is passed straight to `ACL.load`
+ * unless `acl.audit.enabled` is false — no rebuild either way, so `reload()`
+ * stays available on the returned ACL regardless of the auditing setting.
  *
  * @throws Whatever `ACL.load` raises — `ConfigNotFoundError` (the path vanished
  *   between resolve and load) or `ACLRuleError` (structurally invalid
@@ -299,7 +262,10 @@ export function loadCliAcl(root: string, config?: ConfigResolver | null): ACL | 
   // Recorded BEFORE the parse so a failed load can name the file it tried
   // rather than the (possibly directory) root the user configured.
   _lastAclSource = target;
-  return withAclAudit(ACL.load(target), config);
+  const auditCallback = aclAuditEnabled(config)
+    ? createAclAuditCallback(aclAuditIncludeDenied(config))
+    : undefined;
+  return ACL.load(target, auditCallback);
 }
 
 // ---------------------------------------------------------------------------

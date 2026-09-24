@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.12.1] - 2026-09-24
+
+Patch release. Bumps the required `apcore-js` floor to `0.31.0` and `apcore-toolkit` to `0.12.0`. All 825 tests pass.
+
+### Changed
+
+- **`loadCliAcl` no longer rebuilds the ACL to attach the §4.8 audit callback.** apcore-js 0.31.0 makes `ACL.load(yamlPath, auditLogger)` accept the callback directly; the `new ACL(src.rules, src.defaultEffect, auditCallback)` rebuild this SDK relied on — the only lossless way to attach one before this release — is gone, along with the now-unused `withAclAudit` helper. `reload()` is now available on the ACL `loadCliAcl` returns whether or not `acl.audit.enabled` is set; previously it threw on the auditing path.
+
+### Security
+
+- **`apcli openapi scan|generate` inherits apcore-toolkit 0.12.0's `$ref` sibling-key fix.** `OpenAPIScanner` (imported, never reimplemented, by `openapi-cmd.ts`/`openapi-source.ts`) previously discarded a `$ref` node's sibling keys during schema resolution, dropping `x-sensitive` and letting a field an OpenAPI document marked sensitive reach apcore with nothing to redact on. Fixed upstream; no code change was needed here.
+
 ## [0.12.0] - 2026-09-05
 
 Adds two feature groups under `apcli`: **FE-14 ACL Governance** (`apcli acl list|check|validate|status`, the `--acl` flag, `Executor.setAcl` wiring and the §4.8 audit wiring) and **FE-15a OpenAPI Import** (`apcli openapi scan|generate`). `APCLI_SUBCOMMAND_NAMES` grows from 13 to 15. Floors move to `apcore-js>=0.30.0` and `apcore-toolkit>=0.11.1`. The suite goes from 661 to 807 tests.
