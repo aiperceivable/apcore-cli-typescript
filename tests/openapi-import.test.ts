@@ -1,5 +1,5 @@
 /**
- * FE-15a OpenAPI Import — verification matrix T-OAPI-01..27.
+ * FE-15a OpenAPI Import — verification matrix T-OAPI-01..28.
  *
  * FE-15b (§8) is out of scope for this release: no `--openapi` startup flag,
  * no `--binding` proxy dispatch, no `HTTPProxyRegistryWriter`. T-OAPI-30..40
@@ -158,6 +158,20 @@ paths:
       responses: { "200": { description: ok } }
 `;
 
+/**
+ * A path segment beginning with a digit and no operationId: the one case the
+ * toolkit's normalisation does not repair (it would have to invent a name).
+ */
+const DIGIT_SEGMENT = `
+openapi: "3.0.3"
+info: { title: TwoFactor, version: "1.0.0" }
+paths:
+  /v1/2fa:
+    post:
+      summary: Start two-factor enrolment
+      responses: { "200": { description: ok } }
+`;
+
 let FIXTURES: string;
 
 beforeAll(() => {
@@ -171,6 +185,7 @@ beforeAll(() => {
   write("external-ref.yaml", EXTERNAL_REF);
   write("deprecated.yaml", DEPRECATED_DOC);
   write("security.yaml", SECURITY_SCHEMES);
+  write("digit-segment.yaml", DIGIT_SEGMENT);
   write("malformed.json", "{ not: valid json ");
 });
 
@@ -312,7 +327,7 @@ describe("loadOpenapiSource (FE-15a §4.1)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// §4.2 openapi scan — T-OAPI-01..14
+// §4.2 openapi scan — T-OAPI-01..14, T-OAPI-28
 // ---------------------------------------------------------------------------
 
 describe("apcli openapi scan (FE-15a §4.2)", () => {
@@ -335,20 +350,24 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
     );
   });
 
-  it("T-OAPI-03: IDs equal the toolkit's derive_module_id output, case preserved", async () => {
+  it("T-OAPI-03: IDs equal the toolkit's deriveModuleId output, unmodified by the CLI", async () => {
     const res = await runOpenapi(["openapi", "scan", fixture("petstore.yaml"), "--format", "json"]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
     // The CLI must NOT re-derive, normalize or kebab-case what the toolkit
     // returns — that guarantee is conformance-pinned across three SDKs.
+    // Normalisation into apcore's ID alphabet is the toolkit's (0.13.0+), so
+    // the camelCase operationIds arrive as snake_case and pass through as-is.
     expect(ids).toContain(deriveModuleId("/pets", "get", { operationId: "listPets" }));
-    expect(ids).toContain("listPets");
-    expect(ids).toContain("createPets");
+    expect(ids).toContain(deriveModuleId("/pets", "post", { operationId: "createPets" }));
+    expect(ids).toContain("list_pets");
+    expect(ids).toContain("create_pets");
   });
 
   it("T-OAPI-04: without operationId the path-and-method algorithm applies", async () => {
     const res = await runOpenapi(["openapi", "scan", fixture("petstore.yaml"), "--format", "json"]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).toContain("pets.petid.delete");
+    expect(ids).toContain(deriveModuleId("/pets/{petId}", "delete", {}));
+    expect(ids).toContain("pets.pet_id.delete");
   });
 
   it("T-OAPI-05: --prefix prefixes every ID", async () => {
@@ -368,7 +387,7 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
       "--prefix", "api", "--include", "^api\\.list", "--format", "json",
     ]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).toEqual(["api.listPets"]);
+    expect(ids).toEqual(["api.list_pets"]);
   });
 
   it("T-OAPI-06: --include keeps only matching IDs", async () => {
@@ -376,7 +395,7 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
       "openapi", "scan", fixture("petstore.yaml"), "--include", "^pets", "--format", "json",
     ]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).toEqual(["pets.petid.delete"]);
+    expect(ids).toEqual(["pets.pet_id.delete"]);
   });
 
   it("--exclude drops matching IDs", async () => {
@@ -384,7 +403,7 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
       "openapi", "scan", fixture("petstore.yaml"), "--exclude", "^pets", "--format", "json",
     ]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).toEqual(["listPets", "createPets"]);
+    expect(ids).toEqual(["list_pets", "create_pets"]);
   });
 
   it("T-OAPI-07: an invalid --exclude regex exits 2 and names the flag", async () => {
@@ -409,14 +428,14 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
     ]);
     expect(
       JSON.parse(withAll.stdout).modules.map((m: { module_id: string }) => m.module_id),
-    ).toContain("oldOne");
+    ).toContain("old_one");
 
     const res = await runOpenapi([
       "openapi", "scan", fixture("deprecated.yaml"), "--no-deprecated", "--format", "json",
     ]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).not.toContain("oldOne");
-    expect(ids).toContain("newOne");
+    expect(ids).not.toContain("old_one");
+    expect(ids).toContain("new_one");
   });
 
   it("T-OAPI-09: deprecated: \"false\" (a string) is not treated as deprecated", async () => {
@@ -424,7 +443,7 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
       "openapi", "scan", fixture("deprecated.yaml"), "--no-deprecated", "--format", "json",
     ]);
     const ids = JSON.parse(res.stdout).modules.map((m: { module_id: string }) => m.module_id);
-    expect(ids).toContain("stringyOne");
+    expect(ids).toContain("stringy_one");
   });
 
   it("T-OAPI-10: an operation with no 2xx response warns, keeps the module, exits 0", async () => {
@@ -486,11 +505,11 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
     }
     expect(Array.isArray(payload.hazards)).toBe(true);
     expect(payload.hazards).toHaveLength(1);
-    expect(payload.hazards[0].module_id).toBe("createPets");
+    expect(payload.hazards[0].module_id).toBe("create_pets");
     // Hazards are NOT inside a module's warnings array — they describe a
     // future execution path, not the scan that just ran.
     const created = payload.modules.find(
-      (m: { module_id: string }) => m.module_id === "createPets",
+      (m: { module_id: string }) => m.module_id === "create_pets",
     );
     expect(created.warnings).toEqual([]);
   });
@@ -500,7 +519,7 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
       const res = await runOpenapi([
         "openapi", "scan", fixture("petstore.yaml"), "--format", style,
       ]);
-      expect(res.stdout).toContain("listPets");
+      expect(res.stdout).toContain("list_pets");
       expect(res.code).toBeUndefined();
     }
   });
@@ -528,6 +547,34 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
     expect(res.stdout).toContain("Module ID");
     expect(res.stdout).toContain("GET /pets");
   });
+
+  it("T-OAPI-28: an ID segment beginning with a digit is still listed, and the toolkit's legality warning is rendered verbatim", async () => {
+    // The one case apcore-toolkit's normalisation does not repair: `POST
+    // /v1/2fa` derives `v1.2fa.post`, which no apcore registry accepts. The
+    // module is still emitted, carrying this warning; the CLI renders it like
+    // any other scanner warning and MUST NOT repair the ID itself.
+    const LEGALITY_WARNING =
+      "module_id 'v1.2fa.post' is not a legal apcore module ID: segment '2fa' must match " +
+      "^[a-z][a-z0-9_]*$; name this operation with a derive_module_id or transform_module hook";
+
+    const table = await runOpenapi([
+      "openapi", "scan", fixture("digit-segment.yaml"), "--format", "table",
+    ]);
+    expect(table.code).toBeUndefined(); // process.exit never called: exit 0
+    // Listed as a table row, not only named inside the warning.
+    expect(table.stdout).toMatch(/^ {2}v1\.2fa\.post \S POST \/v1\/2fa \S Start two-factor enrolment /m);
+    expect(table.stdout).toContain(`\n1 warning:\n  v1.2fa.post  ${LEGALITY_WARNING}\n`);
+
+    const json = await runOpenapi([
+      "openapi", "scan", fixture("digit-segment.yaml"), "--format", "json",
+    ]);
+    expect(json.code).toBeUndefined();
+    const payload = JSON.parse(json.stdout);
+    expect(payload.modules).toHaveLength(1);
+    expect(payload.modules[0].module_id).toBe("v1.2fa.post");
+    expect(payload.modules[0].warnings).toEqual([LEGALITY_WARNING]);
+    expect(payload.hazards).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -540,7 +587,7 @@ describe("detectProxyHazards (FE-15a §4.3)", () => {
       "openapi", "scan", fixture("petstore.yaml"), "--format", "table",
     ]);
     expect(res.stdout).toMatch(/1 operation cannot be proxied/);
-    expect(res.stdout).toContain("createPets");
+    expect(res.stdout).toContain("create_pets");
     expect(res.stdout).toContain("POST with 2 `in: query` parameters");
     expect(res.stdout).toContain("dryRun, tenant");
     // Hazards never change the exit code in FE-15a.
@@ -552,21 +599,24 @@ describe("detectProxyHazards (FE-15a §4.3)", () => {
     const { OpenAPIScanner } = await import("apcore-toolkit");
     const modules = new OpenAPIScanner().scan(spec);
     const hazards = detectProxyHazards(spec, modules);
-    expect(hazards.map((h) => h.moduleId)).toEqual(["createPets"]);
-    expect(hazards.map((h) => h.moduleId)).not.toContain("listPets");
+    expect(hazards.map((h) => h.moduleId)).toEqual(["create_pets"]);
+    expect(hazards.map((h) => h.moduleId)).not.toContain("list_pets");
   });
 
   it("correlates by the toolkit's own metadata, so --prefix does not lose the hazard", async () => {
     const spec = (await loadOpenapiSource(fixture("petstore.yaml"))) as Record<string, unknown>;
     const { OpenAPIScanner } = await import("apcore-toolkit");
     const modules = new OpenAPIScanner().scan(spec, { basePathPrefix: "api" });
-    expect(detectProxyHazards(spec, modules)[0].moduleId).toBe("api.createPets");
+    expect(detectProxyHazards(spec, modules)[0].moduleId).toBe("api.create_pets");
   });
 
   it("a filtered-out operation produces no hazard — no module, no hazard", async () => {
     const spec = (await loadOpenapiSource(fixture("petstore.yaml"))) as Record<string, unknown>;
     const { OpenAPIScanner } = await import("apcore-toolkit");
-    const modules = new OpenAPIScanner().scan(spec, { exclude: "^createPets$" });
+    const modules = new OpenAPIScanner().scan(spec, { exclude: "^create_pets$" });
+    // The pattern must still select exactly the hazardous operation, or an
+    // empty hazard list would prove nothing.
+    expect(modules.map((m) => m.moduleId)).toEqual(["list_pets", "pets.pet_id.delete"]);
     expect(detectProxyHazards(spec, modules)).toEqual([]);
   });
 
@@ -592,9 +642,9 @@ describe("apcli openapi generate (FE-15a §4.4)", () => {
     ]);
     const files = fs.readdirSync(out).sort();
     expect(files).toEqual([
-      "createPets.binding.yaml",
-      "listPets.binding.yaml",
-      "pets.petid.delete.binding.yaml",
+      "create_pets.binding.yaml",
+      "list_pets.binding.yaml",
+      "pets.pet_id.delete.binding.yaml",
     ]);
     expect(res.code).toBeUndefined();
   });
@@ -605,15 +655,15 @@ describe("apcli openapi generate (FE-15a §4.4)", () => {
       "openapi", "generate", fixture("petstore.yaml"), "-o", out, "--dry-run",
     ]);
     expect(fs.readdirSync(out)).toEqual([]);
-    expect(res.stdout).toContain(path.join(out, "listPets.binding.yaml"));
-    expect(res.stdout).toContain(path.join(out, "createPets.binding.yaml"));
+    expect(res.stdout).toContain(path.join(out, "list_pets.binding.yaml"));
+    expect(res.stdout).toContain(path.join(out, "create_pets.binding.yaml"));
   });
 
   it("T-OAPI-20: the artifact carries an intact routing contract", async () => {
     const out = scratch();
     await runOpenapi(["openapi", "generate", fixture("petstore.yaml"), "-o", out]);
     const doc = yaml.load(
-      fs.readFileSync(path.join(out, "createPets.binding.yaml"), "utf8"),
+      fs.readFileSync(path.join(out, "create_pets.binding.yaml"), "utf8"),
     ) as { bindings: Array<Record<string, unknown>> };
     const binding = doc.bindings[0];
     // `target` is a ROUTE DESCRIPTOR, not an import path (§4.5).
@@ -628,7 +678,7 @@ describe("apcli openapi generate (FE-15a §4.4)", () => {
     const out = scratch();
     await runOpenapi(["openapi", "generate", fixture("petstore.yaml"), "-o", out]);
     const loaded = new BindingLoader().load(
-      path.join(out, "pets.petid.delete.binding.yaml"),
+      path.join(out, "pets.pet_id.delete.binding.yaml"),
     );
     expect(loaded).toHaveLength(1);
     const metadata = loaded[0].metadata as Record<string, unknown>;
@@ -639,29 +689,32 @@ describe("apcli openapi generate (FE-15a §4.4)", () => {
   it("T-OAPI-20: no base URL is written — nothing in this release consumes one", async () => {
     const out = scratch();
     await runOpenapi(["openapi", "generate", fixture("petstore.yaml"), "-o", out]);
-    const raw = fs.readFileSync(path.join(out, "listPets.binding.yaml"), "utf8");
+    const raw = fs.readFileSync(path.join(out, "list_pets.binding.yaml"), "utf8");
     expect(raw).not.toMatch(/base_url/);
   });
 
   it("T-OAPI-21: an existing file without --force is skipped, warned about, and exits 0", async () => {
     const out = scratch();
-    const target = path.join(out, "listPets.binding.yaml");
+    // Must be a name `generate` actually writes, or the file is never touched
+    // and "unchanged" holds vacuously.
+    const target = path.join(out, "list_pets.binding.yaml");
     fs.writeFileSync(target, "PRE-EXISTING\n", "utf8");
     const res = await runOpenapi(["openapi", "generate", fixture("petstore.yaml"), "-o", out]);
     expect(fs.readFileSync(target, "utf8")).toBe("PRE-EXISTING\n");
     expect(res.stderr).toMatch(/already exists; skipped \(use --force to overwrite\)/);
+    expect(res.stderr).toContain(`${target} already exists; skipped`);
     expect(res.code).toBeUndefined();
     // The other modules are still written.
-    expect(fs.existsSync(path.join(out, "createPets.binding.yaml"))).toBe(true);
+    expect(fs.existsSync(path.join(out, "create_pets.binding.yaml"))).toBe(true);
   });
 
   it("T-OAPI-22: --force overwrites the existing file", async () => {
     const out = scratch();
-    const target = path.join(out, "listPets.binding.yaml");
+    const target = path.join(out, "list_pets.binding.yaml");
     fs.writeFileSync(target, "PRE-EXISTING\n", "utf8");
     await runOpenapi(["openapi", "generate", fixture("petstore.yaml"), "-o", out, "--force"]);
     expect(fs.readFileSync(target, "utf8")).not.toBe("PRE-EXISTING\n");
-    expect(fs.readFileSync(target, "utf8")).toContain("module_id: listPets");
+    expect(fs.readFileSync(target, "utf8")).toContain("module_id: list_pets");
   });
 
   it("T-OAPI-23 (withdrawn): there is no host-language source writer", async () => {
@@ -721,7 +774,7 @@ describe("apcli openapi generate (FE-15a §4.4)", () => {
     ]);
     for (const text of [generated.stdout, scanned.stdout]) {
       expect(text).toMatch(/1 operation cannot be proxied/);
-      expect(text).toContain("createPets");
+      expect(text).toContain("create_pets");
       expect(text).toContain("dryRun, tenant");
     }
   });
