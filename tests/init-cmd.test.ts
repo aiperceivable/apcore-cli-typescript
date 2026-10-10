@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { Command } from "commander";
+import { BindingLoader } from "apcore-toolkit";
 import { registerInitCommand } from "../src/init-cmd.js";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,13 @@ describe("init module command", () => {
     expect(yamlFiles.length).toBe(1);
     const content = fs.readFileSync(yamlFiles[0], "utf-8");
     expect(content).toContain("ops.deploy");
+    for (const strict of [false, true]) {
+      const modules = new BindingLoader().load(yamlFiles[0], strict);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].moduleId).toBe("ops.deploy");
+      expect(modules[0].inputSchema).toEqual({ type: "object", properties: {} });
+      expect(modules[0].outputSchema.properties).toEqual({ status: { type: "string" } });
+    }
   });
 
   it("convention has CLI_GROUP for dotted IDs", () => {

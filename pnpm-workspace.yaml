@@ -1,2 +1,4 @@
+minimumReleaseAgeExclude:
+  - apcore-toolkit@0.14.0
 onlyBuiltDependencies:
   - esbuild

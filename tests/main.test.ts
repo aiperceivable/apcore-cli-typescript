@@ -1328,3 +1328,74 @@ describe("createCli — CliApprovalHandler wiring", () => {
     ).not.toThrow();
   });
 });
+
+describe("native apcore 0.32.0 validation diagnostics", () => {
+  const originalIsTty = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+  afterEach(() => {
+    if (originalIsTty) Object.defineProperty(process.stderr, "isTTY", originalIsTty);
+    else delete process.stderr.isTTY;
+  });
+  it.each(["circular", "bigint"])("retains the exit code for %s terminal details", async (kind) => {
+    const { ModuleError } = await import("apcore-js");
+    const context: Record<string, unknown> = {};
+    if (kind === "circular") context.self = context;
+    else context.value = 1n;
+    const error = new ModuleError("GENERAL_INVALID_INPUT", "Invalid module input", { context });
+    Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: true });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__exit__");
+    }) as never);
+    const command = buildModuleCommand(makeMod("test.validate"), {
+      call: vi.fn().mockRejectedValue(error),
+    });
+    await expect(command.parseAsync([], { from: "user" })).rejects.toThrow("__exit__");
+    expect(exit).toHaveBeenCalledWith(1);
+    const output = stderr.mock.calls.map(([value]) => String(value)).join("");
+    expect(output).toContain("Error [GENERAL_INVALID_INPUT]: Invalid module input");
+    expect(output).toContain("Exit code: 1");
+    expect(output).toContain(kind === "circular" ? "[Circular" : "1n");
+  });
+
+  it.each([false, true])("preserves pointers and details with TTY=%s", async (tty) => {
+    const { SchemaValidator, SchemaValidationError } = await import("apcore-js");
+    const { Type } = await import("@sinclair/typebox");
+    const schema = Type.Object({
+      count: Type.Integer(),
+      items: Type.Array(Type.Object({ count: Type.Integer() })),
+      "a/b~c": Type.Integer(),
+    });
+    let error: unknown;
+    try {
+      new SchemaValidator().validateInput({ items: [{ count: "bad" }], "a/b~c": "bad" }, schema);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(SchemaValidationError);
+    Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: tty });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__exit__");
+    }) as never);
+    const executor = { call: vi.fn().mockRejectedValue(error) };
+    const command = buildModuleCommand(makeMod("test.validate"), executor);
+    await expect(command.parseAsync([], { from: "user" })).rejects.toThrow("__exit__");
+    expect(exit).toHaveBeenCalledWith(45);
+    const output = stderr.mock.calls.map(([value]) => String(value)).join("");
+    if (tty) {
+      expect(output).toContain("/items/0/count");
+      expect(output).toContain("/a~1b~0c");
+      expect(output).not.toContain("[object Object]");
+      expect(output).not.toContain("unknown");
+    } else {
+      const payload = JSON.parse(output);
+      expect(payload.exit_code).toBe(45);
+      expect(payload.details).toEqual((error as InstanceType<typeof SchemaValidationError>).details);
+      expect(new Set(payload.details.errors.map((entry: { path: string }) => entry.path)))
+        .toEqual(new Set(["", "/items/0/count", "/a~1b~0c"]));
+      for (const entry of payload.details.errors) {
+        expect(Object.keys(entry).sort()).toEqual(["keyword", "message", "path"]);
+      }
+    }
+  });
+});

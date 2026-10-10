@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { inspect } from "node:util";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { Command, CommanderError, Option } from "commander";
@@ -299,7 +300,13 @@ function emitErrorTty(e: unknown, exitCode: number): void {
   if (details && typeof details === "object" && !Array.isArray(details)) {
     process.stderr.write("\n  Details:\n");
     for (const [k, v] of Object.entries(details as Record<string, unknown>)) {
-      process.stderr.write(`    ${k}: ${v}\n`);
+      let detail: string;
+      try {
+        detail = typeof v === "object" && v !== null ? JSON.stringify(v) ?? String(v) : String(v);
+      } catch {
+        detail = inspect(v, { depth: 4, customInspect: false });
+      }
+      process.stderr.write(`    ${k}: ${detail}\n`);
     }
   }
 

@@ -85,7 +85,15 @@ bindings:
   - module_id: "{moduleId}"
     target: "{target}"
     description: "{description}"
-    auto_schema: true
+    input_schema:
+      type: object
+      properties: {}
+    output_schema:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
 `;
 
 /**
