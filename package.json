@@ -1,6 +1,6 @@
 {
   "name": "apcore-cli",
-  "version": "0.12.5",
+  "version": "0.12.6",
   "description": "CLI wrapper for the apcore core SDK — exposes apcore modules as CLI commands",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
     "node": ">=20.0.0"
   },
   "peerDependencies": {
-    "apcore-js": ">=0.32.2",
+    "apcore-js": ">=0.32.3",
     "apcore-toolkit": ">=0.14.0"
   },
   "dependencies": {
