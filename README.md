@@ -49,7 +49,7 @@ Terminal adapter for apcore. Execute AI-Perceivable modules from the command lin
 pnpm add apcore-cli apcore-js apcore-toolkit
 ```
 
-Requires Node.js 20+, `apcore-js >= 0.32.0`, and `apcore-toolkit >= 0.14.0` (required peer dep as of v0.9.0).
+Requires Node.js 20+, `apcore-js >= 0.32.3`, and `apcore-toolkit >= 0.14.1` (required peer dep as of v0.9.0).
 
 **v0.9.0 breaking change:** `apcore-toolkit` is now a **required** peer dependency (previously optional). All `--format` operations route through the toolkit's byte-equivalent reference implementations for csv / jsonl / markdown / skill. See [tech-design ADR-09](https://github.com/aiperceivable/apcore-cli/blob/main/docs/tech-design.md) for the rationale and migration notes.
 

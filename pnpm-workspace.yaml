@@ -2,4 +2,5 @@ allowBuilds:
   esbuild: true
   keytar: true
 minimumReleaseAgeExclude:
-  - apcore-toolkit@0.14.0
+  - apcore-js@0.32.3
+  - apcore-toolkit@0.14.1
