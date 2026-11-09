@@ -127,7 +127,7 @@ async function main() {
 main();
 ```
 
-> **Known gap:** The `Registry`, `Executor`, and `ModuleDescriptor` types re-exported by `apcore-cli` are currently **local placeholder interfaces** pending upstream export from `apcore-js`. Direct construction (`new Registry(...)` / `new Executor(registry)`) is **not supported** at this version. Structural typing allows runtime apcore-js objects to satisfy these interfaces, so `createCli({ registry, executor })` works when you pass in objects produced by your apcore-js runtime.
+> **Known gap:** The `Registry`, `Executor`, and `ModuleDescriptor` types exported by `apcore-cli` are **local placeholder interfaces** pending upstream export from `apcore-js`. Direct construction (`new Registry(...)` / `new Executor(registry)`) is **not supported** at this version. They are structural subsets of the apcore-js types, so real apcore-js `Registry` / `Executor` instances and the descriptors they return are assignable as-is under `strict` TypeScript — `createCli({ registry, executor })` and `new GroupedModuleGroup(registry, executor)` work without an adapter. Note that `ModuleDescriptor.annotations` is typed `object | null` (not `Record<string, unknown>`) because apcore-js declares it as the named interface `ModuleAnnotations | null`, which has no implicit index signature; treat the bag as opaque and read entries through your own accessor.
 
 ## Integration with Existing Projects
 

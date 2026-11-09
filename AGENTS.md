@@ -5,6 +5,10 @@
 - `pnpm test` (or `npx vitest run`) — run all tests. **Must pass before considering any task complete.**
 - `pnpm build` — compile TypeScript to `dist/`.
 - `npx tsc --noEmit` — type check without emitting.
+- `pnpm typecheck` (`tsc -p tsconfig.typecheck.json`) — type check `src/` + `bin/` + the
+  compile-time guards in `tests/types/`. The default tsconfig excludes `tests`, so this is the
+  only gate that proves real apcore-js `Registry` / `Executor` objects still satisfy the local
+  shims in `src/cli.ts`. Also runs as part of `pnpm lint`.
 
 ## Code Style
 
@@ -47,14 +51,23 @@
 - validate module registers validate command + --dry-run flag — FE-11.
 - Config Bus namespace registration in registerConfigNamespace() at createCli start.
 - AuditLogger is wired in createCli via setAuditLogger() at startup (parity with Python).
-- Known gap (still open at v0.9.0): Registry / ModuleDescriptor types in src/cli.ts are still
-  local placeholder interfaces. Their method names (`listModules` / `getModule`) and
-  descriptor field name (`id`) do NOT match upstream apcore-js (`list` /
-  `getDefinition` / `moduleId`). Users must adapt their real apcore-js registry
-  instances to this local shape (or pass wrappers). The Executor placeholder
-  and the PipelineTrace / PreflightResult / StrategyStep runtime-read shapes
-  were aligned with upstream camelCase in the 0.19.0 upgrade — only the
-  Registry / ModuleDescriptor side remains divergent.
+- Type parity (updated v0.12.8): the Registry / Executor / ModuleDescriptor interfaces in
+  src/cli.ts are local structural shims (the package carries no apcore-js type import, matching
+  apcore-mcp's stance). Method names (`list` / `getDefinition` / `call`) and descriptor field
+  names (`moduleId`, …) align with apcore-js >= 0.22.0, so real apcore-js instances are
+  assignable without an adapter. `ModuleDescriptor.annotations` is `object | null`, NOT
+  `Record<string, unknown>`: apcore-js declares `ModuleAnnotations | null` and a named
+  interface never gets an implicit index signature, so a `Record` target rejects every real
+  descriptor (fixed in 0.12.8; regression guard in tests/types/registry-compat.ts, run by
+  `pnpm typecheck`). Keep annotations opaque at this boundary — read entries through
+  getAnnotation().
+- Annotation key convention (v0.12.8): apcore-js `ModuleAnnotations` is **camelCase in memory**
+  (`requiresApproval`, `cacheTtl`, `extra`) and **snake_case on the wire** (PROTOCOL_SPEC
+  §4.4.1). Never index `descriptor.annotations` directly — use `getAnnotation(bag, key, default)`
+  from `src/annotations.ts` (public: exported from the package root). It matches either
+  spelling plus the CLI flag spelling (`requires-approval`) and falls back to `extra`. The
+  snake_case literals carried over from Python/Rust caused a real approval-gate bypass for
+  camelCase apcore-js descriptors (fixed in 0.12.8).
 - Sandbox.execute(moduleId, inputData, executor): Promise<unknown> — 3-parameter async
   method. Builder API: new Sandbox(enabled, timeoutSeconds).withExtensionsRoot(path).withMaxOutputBytes(n).
   The disabled path delegates to executor.execute(moduleId, inputData). Note: TS uses

@@ -1,6 +1,6 @@
 {
   "name": "apcore-cli",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "CLI wrapper for the apcore core SDK — exposes apcore modules as CLI commands",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "lint": "tsc --noEmit && eslint src tests --ext .ts",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "lint": "tsc --noEmit && tsc -p tsconfig.typecheck.json && eslint src tests --ext .ts",
     "clean": "rm -rf dist",
     "run-examples": "npx tsx examples/run-examples.ts"
   },

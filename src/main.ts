@@ -16,6 +16,7 @@ import { EXIT_CODES, exitCodeForError, MaxDepthExceededError, CircularRefError, 
 import { resolveRefs } from "./ref-resolver.js";
 import { schemaToCliOptions } from "./schema-parser.js";
 import { checkApproval } from "./approval.js";
+import { getAnnotation } from "./annotations.js";
 import { formatExecResult, formatPreflightResult, firstFailedExitCode, resolveFormat } from "./output.js";
 import { setLogLevel, warn as logWarn } from "./logger.js";
 import { registerInitCommand } from "./init-cmd.js";
@@ -1332,8 +1333,7 @@ export function buildModuleCommand(
         if (resolveFormat(outputFormat) === "table") {
           process.stderr.write("Warning: Streaming mode always outputs JSONL; --format table is ignored.\n");
         }
-        const annotations = moduleDef.annotations as Record<string, unknown> | undefined;
-        const isStreaming = annotations?.streaming === true;
+        const isStreaming = getAnnotation(moduleDef.annotations, "streaming", false) === true;
         if (!isStreaming) {
           process.stderr.write(
             `Warning: Module '${moduleId}' does not declare streaming support. Falling back to standard execution.\n`,

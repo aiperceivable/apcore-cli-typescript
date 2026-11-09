@@ -26,7 +26,8 @@ import { EXIT_CODES } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // CLI-internal type shims (paired with apcore-js shape divergence — see above).
-// Embedders must wrap their real apcore-js Registry to satisfy this interface.
+// These are structural subsets of the apcore-js types: real apcore-js Registry /
+// Executor instances and the descriptors they return satisfy them as-is.
 // ---------------------------------------------------------------------------
 
 /**
@@ -201,7 +202,17 @@ export interface ModuleDescriptor {
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   requiresApproval?: boolean;
-  annotations?: Record<string, unknown>;
+  /**
+   * Annotation bag. Typed `object | null` rather than
+   * `Record<string, unknown>` on purpose: apcore-js declares
+   * `annotations: ModuleAnnotations | null`, and `ModuleAnnotations` is a
+   * named *interface*, which never gets an implicit index signature. A
+   * `Record<string, unknown>` here would therefore reject every real
+   * apcore-js descriptor (and thus every real apcore-js Registry). The CLI
+   * only ever reads annotations through the `getAnnotation()` helper, which
+   * takes `unknown`, so the bag stays opaque at this boundary.
+   */
+  annotations?: object | null;
   metadata?: Record<string, unknown>;
 }
 

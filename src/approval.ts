@@ -6,24 +6,12 @@
 
 import * as readline from "node:readline";
 import type { ModuleDescriptor } from "./cli.js";
+import { getAnnotation } from "./annotations.js";
 import { ApprovalDeniedError, ApprovalTimeoutError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Get an annotation value from either a dict or an object.
- */
-function getAnnotation(
-  annotations: unknown,
-  key: string,
-  defaultValue: unknown = undefined,
-): unknown {
-  if (!annotations || typeof annotations !== "object") return defaultValue;
-  const ann = annotations as Record<string, unknown>;
-  return key in ann ? ann[key] : defaultValue;
-}
 
 /**
  * Read APCORE_CLI_APPROVAL_TIMEOUT env var (positive integer seconds).

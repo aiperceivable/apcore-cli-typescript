@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.12.8] - 2026-11-09
+
+### Fixed
+
+- **Real apcore-js `Registry` / `Executor` objects are assignable to the CLI's shims again.** `ModuleDescriptor.annotations` was typed `Record<string, unknown>`, but apcore-js declares `annotations: ModuleAnnotations | null` — a named interface, which never receives an implicit index signature. Under `strict`, `createCli({ registry })`, `new GroupedModuleGroup(registry, executor)` and `Executor.registry` therefore rejected every real apcore-js instance (TS2322 / TS2345), contradicting the "no adapter required" JSDoc and the README's Known-gap paragraph. The field is now `object | null` (opaque at this boundary; the CLI only reads annotations through `getAnnotation()`, which takes `unknown`), so no per-embedder adapter is needed. No runtime behaviour changed.
+- Added a compile-time guard (`tests/types/registry-compat.ts`, `tsconfig.typecheck.json`, `pnpm typecheck`, wired into `pnpm lint`). The default tsconfig excludes `tests`, so nothing previously proved that the local shims still accept real apcore-js objects; the placeholder had silently drifted from upstream when apcore-js replaced the annotations `Record` with `ModuleAnnotations | null`.
+- README "Known gap" and AGENTS.md type-parity notes rewritten to match reality: the shims are structural subsets, real instances are assignable, and `annotations` is `object | null`.
+
+### Security
+
+- **The client-side approval gate ignored apcore-js's annotation casing.** apcore-js keeps `ModuleAnnotations` camelCase in memory (`DEFAULT_ANNOTATIONS`: `requiresApproval`, `openWorld`, `cacheTtl`, …) and snake_case only on the wire (PROTOCOL_SPEC §4.4.1). The CLI was ported from the Python/Rust SDKs, whose in-memory annotations are snake_case, so `checkApproval()` looked up `requires_approval` on a real apcore-js descriptor, found nothing and returned "not required" — a module declaring `annotations.requiresApproval: true` ran without a prompt whenever the executor's own approval step was not the gate (e.g. a `minimal`/`internal` strategy, or a delegated `--sandbox` call). The same casing mismatch disabled `apcli list --annotation requires-approval` filtering and the `not_required` short-circuit in `CliApprovalHandler.requestApproval()`.
+- All annotation reads now go through one accessor, `getAnnotation()` (`src/annotations.ts`, exported from the package root), which resolves `requiresApproval` / `requires_approval` / `requires-approval` and falls back to the `extra` bag where apcore-js keeps extension data such as `approval_message`. It also gives embedders a supported way to read the opaque `annotations` bag without casting.
+- Tests: `tests/annotations.test.ts` (key conventions, `extra` fallback, falsy values, class instances) and `tests/approval-annotations.test.ts` (a descriptor shaped like a real apcore-js one must still prompt).
+
+### Compatibility verification
+
+- Full suite: **843 passed, 0 failed** (35 files, including the 13 new annotation-convention tests); `tsc --noEmit`, `tsc -p tsconfig.typecheck.json` and `eslint src tests` all clean against apcore-js 0.32.3 (ESLint: 0 errors, pre-existing warnings only).
+
 ## [0.12.3] - 2026-10-10
 
 ### Changed

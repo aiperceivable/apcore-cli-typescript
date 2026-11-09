@@ -36,6 +36,11 @@ export type { ApcliConfig, ApcliMode } from "./builtin-group.js";
 // Approval handler (FE-11)
 export { CliApprovalHandler, checkApproval } from "./approval.js";
 
+// Annotation accessor — resolve `requiresApproval` / `requires_approval` /
+// `requires-approval` against an opaque `ModuleDescriptor.annotations` bag
+// (apcore-js keeps annotations camelCase in memory and snake_case on the wire).
+export { getAnnotation } from "./annotations.js";
+
 // Configuration
 export { ConfigResolver, DEFAULTS, registerConfigNamespace } from "./config.js";
 
