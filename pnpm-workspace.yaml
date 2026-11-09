@@ -3,4 +3,4 @@ allowBuilds:
   keytar: true
 minimumReleaseAgeExclude:
   - apcore-js@0.32.3
-  - apcore-toolkit@0.14.1
+  - apcore-toolkit@0.14.1 || 0.14.2
