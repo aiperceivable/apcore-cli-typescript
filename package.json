@@ -1,6 +1,6 @@
 {
   "name": "apcore-cli",
-  "version": "0.12.9",
+  "version": "0.13.0",
   "description": "CLI wrapper for the apcore core SDK — exposes apcore modules as CLI commands",
   "type": "module",
   "main": "./dist/index.js",

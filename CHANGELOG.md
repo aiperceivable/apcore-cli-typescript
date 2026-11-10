@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.13.0] - 2026-11-10
+
+### Added
+
+- Embedded hosts can set `printResult: false` and consume the raw result and canonical module ID through `onResult`. `buildModuleCommand()` applies the options to one command. `createCli()` and `registerExecCommand()` apply them to `apcli exec`. Async callbacks are awaited.
+
+### Changed
+
+- Module execution rejects `--sandbox` combined with `--trace`, `--strategy`, or `--stream` with exit code 2. For sandboxed execution, omit those options and any environment-provided strategy.
+
+### Fixed
+
+- Terminal trace diagnostics remain on stderr when result printing is disabled.
+- The built CLI reports its own package version from the build metadata.
+
 ## [0.12.9] - 2026-11-09
 
 ### Changed

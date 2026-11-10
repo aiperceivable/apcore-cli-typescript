@@ -13,7 +13,8 @@ import { getAnnotation } from "./annotations.js";
 import { listAllDefinitions } from "./cli.js";
 import type { Executor, ModuleDescriptor, Registry } from "./cli.js";
 import { EXIT_CODES, exitCodeForError } from "./errors.js";
-import { validateModuleId, collectInput } from "./main.js";
+import { validateModuleId, collectInput, validateSandboxOptions } from "./main.js";
+import type { ModuleResultOptions } from "./main.js";
 import {
   formatExecResult,
   formatModuleDetail,
@@ -255,6 +256,7 @@ export function registerExecCommand(
   apcliGroup: Command,
   registry: Registry,
   executor: Executor,
+  { printResult = true, onResult }: ModuleResultOptions = {},
 ): void {
   const execCmd = new Command("exec")
     .description("Execute a module by ID with JSON input.")
@@ -298,6 +300,8 @@ export function registerExecCommand(
         process.stderr.write(`Error: Module '${moduleId}' not found.\n`);
         process.exit(EXIT_CODES.MODULE_NOT_FOUND);
       }
+
+      if (!opts.dryRun) validateSandboxOptions(opts.sandbox, opts.trace, opts.stream, opts.strategy);
 
       // Parse --input. Distinguish between a stdin marker ("-") — delegated
       // to collectInput — and an inline JSON literal, which we parse directly
@@ -360,8 +364,8 @@ export function registerExecCommand(
         const durationMs = Math.round(performance.now() - startTime);
 
         // Format output first (canonical ordering: format → audit on success)
-        const fmt = resolveFormat(opts.format);
-        formatExecResult(result, fmt, opts.fields);
+        if (printResult) formatExecResult(result, resolveFormat(opts.format), opts.fields);
+        if (onResult) await onResult(result, moduleId);
 
         // Audit success AFTER format so a formatter exception suppresses the entry
         const auditLogger = getAuditLogger();

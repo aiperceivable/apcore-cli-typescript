@@ -129,6 +129,28 @@ main();
 
 > **Known gap:** The `Registry`, `Executor`, and `ModuleDescriptor` types exported by `apcore-cli` are **local placeholder interfaces** pending upstream export from `apcore-js`. Direct construction (`new Registry(...)` / `new Executor(registry)`) is **not supported** at this version. They are structural subsets of the apcore-js types, so real apcore-js `Registry` / `Executor` instances and the descriptors they return are assignable as-is under `strict` TypeScript — `createCli({ registry, executor })` and `new GroupedModuleGroup(registry, executor)` work without an adapter. Note that `ModuleDescriptor.annotations` is typed `object | null` (not `Record<string, unknown>`) because apcore-js declares it as the named interface `ModuleAnnotations | null`, which has no implicit index signature; treat the bag as opaque and read entries through your own accessor.
 
+#### Render a module result in the host
+
+```typescript
+import { buildModuleCommand } from "apcore-cli";
+
+const status = buildModuleCommand(descriptor, executor, undefined, "status", undefined, {
+  printResult: false,
+  onResult(result, moduleId) {
+    console.log(JSON.stringify({ moduleId, result }));
+  },
+});
+
+await status.parseAsync(process.argv);
+```
+
+The callback receives the raw result and canonical module ID after a successful
+non-streaming call. The command awaits async callbacks. Set these options on
+`createCli({ registry, executor, printResult, onResult })` for the built-in
+`apcli exec` command. Result printing defaults to enabled. The print setting
+leaves preflight reports, streaming output, errors, and terminal traces on
+their own output paths.
+
 ## Integration with Existing Projects
 
 ### Typical apcore project structure
@@ -404,7 +426,7 @@ apcore Registry + Executor (your modules, unchanged)
 
 **Classes:** `LazyModuleGroup`, `GroupedModuleGroup`, `ApcliGroup`, `ExposureFilter`, `CliApprovalHandler`, `ConfigResolver`, `AuthProvider`, `ConfigEncryptor`, `AuditLogger`, `Sandbox`
 
-**Interfaces:** `CreateCliOptions`, `Registry`, `Executor`, `ModuleDescriptor`, `APCore`, `ApcliConfig`, `ApcliMode`, `StrategyInfo`, `StrategyStep`
+**Interfaces:** `CreateCliOptions`, `ModuleResultOptions`, `Registry`, `Executor`, `ModuleDescriptor`, `APCore`, `ApcliConfig`, `ApcliMode`, `StrategyInfo`, `StrategyStep`
 
 **Functions:** `createCli`, `main`, `buildModuleCommand`, `validateModuleId`, `collectInput`, `schemaToCliOptions`, `reconvertEnumValues`, `resolveRefs`, `checkApproval`, `formatExecResult`, `registerListCommand`, `registerDescribeCommand`, `registerExecCommand`, `registerValidateCommand`, `registerHealthCommand`, `registerUsageCommand`, `registerEnableCommand`, `registerDisableCommand`, `registerReloadCommand`, `registerConfigCommand`, `registerCompletionCommand`, `registerPipelineCommand`, `registerInitCommand`, `setAuditLogger`, `getAuditLogger`, `setVerboseHelp`, `setDocsUrl`, `configureManHelp`, `exitCodeForError`
 

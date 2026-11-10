@@ -1399,3 +1399,188 @@ describe("native apcore 0.32.0 validation diagnostics", () => {
     }
   });
 });
+
+describe("embedded module results", () => {
+  const moduleDef = makeMod("post.status");
+  const payload = { status: "done", details: { progress: 100 } };
+
+  it("delivers the full result to the host and waits for it without printing", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const render = vi.fn();
+    const onResult = vi.fn(async (result: unknown) => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      render(result);
+    });
+    const cmd = buildModuleCommand(moduleDef, makeExecutor(payload), 1000, "status", undefined, {
+      printResult: false,
+      onResult,
+    });
+
+    await cmd.parseAsync(["--format", "json", "--fields", "status"], { from: "user" });
+
+    expect(onResult.mock.calls).toEqual([[payload, "post.status"]]);
+    expect(render.mock.calls).toEqual([[payload]]);
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
+  it("delivers the module result without trace metadata when traced output is disabled", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const onResult = vi.fn();
+    const executor = {
+      ...makeExecutor(),
+      callWithTrace: vi.fn().mockResolvedValue([
+        payload,
+        { strategyName: "standard", totalDurationMs: 1, success: true, steps: [] },
+      ]),
+    };
+    const cmd = buildModuleCommand(moduleDef, executor, 1000, "status", undefined, {
+      printResult: false,
+      onResult,
+    });
+
+    await cmd.parseAsync(["--trace", "--format", "json"], { from: "user" });
+
+    expect(onResult.mock.calls).toEqual([[payload, "post.status"]]);
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
+  it("keeps terminal trace diagnostics when result printing is disabled", async () => {
+    const originalIsTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+    try {
+      const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const onResult = vi.fn();
+      const executor = {
+        ...makeExecutor(),
+        callWithTrace: vi.fn().mockResolvedValue([
+          payload,
+          { strategyName: "standard", totalDurationMs: 1, success: true, steps: [] },
+        ]),
+      };
+      const cmd = buildModuleCommand(moduleDef, executor, 1000, "status", undefined, {
+        printResult: false,
+        onResult,
+      });
+
+      await cmd.parseAsync(["--trace", "--format", "table"], { from: "user" });
+
+      expect(onResult.mock.calls).toEqual([[payload, "post.status"]]);
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("Pipeline Trace");
+    } finally {
+      if (originalIsTty) Object.defineProperty(process.stdout, "isTTY", originalIsTty);
+      else delete process.stdout.isTTY;
+    }
+  });
+
+  it("uses createCli options for the generic exec command", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const onResult = vi.fn();
+    const cli = createCli({
+      registry: { list: () => ["post.status"], getDefinition: () => moduleDef },
+      executor: makeExecutor(payload),
+      printResult: false,
+      onResult,
+    });
+
+    await cli.parseAsync(["apcli", "exec", "post.status"], { from: "user" });
+
+    expect(onResult.mock.calls).toEqual([[payload, "post.status"]]);
+    expect(stdout).not.toHaveBeenCalled();
+  });
+
+  it("keeps printing by default when an observer is installed", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const onResult = vi.fn();
+    const cmd = buildModuleCommand(moduleDef, makeExecutor(payload), 1000, "status", undefined, { onResult });
+
+    await cmd.parseAsync(["--format", "json"], { from: "user" });
+
+    expect(onResult.mock.calls).toEqual([[payload, "post.status"]]);
+    expect(stdout.mock.calls).toEqual([[JSON.stringify(payload, null, 2) + "\n"]]);
+  });
+});
+
+describe.each(["generated command", "apcli exec"])("sandbox option validation in %s", (entry) => {
+  const moduleDef = { ...makeMod("post.status"), annotations: { streaming: true } };
+  function runCommand(executor: Executor, flags: string[]) {
+    if (entry === "generated command") {
+      return buildModuleCommand(moduleDef, executor).parseAsync(flags, { from: "user" });
+    }
+    const command = createCli({
+      registry: { list: () => ["post.status"], getDefinition: () => moduleDef },
+      executor,
+    });
+    return command.parseAsync(["apcli", "exec", "post.status", ...flags], { from: "user" });
+  }
+
+  it("runs a plain sandbox request in the sandbox", async () => {
+    const { Sandbox } = await import("../src/security/sandbox.js");
+    const sandbox = vi.spyOn(Sandbox.prototype, "execute").mockResolvedValue({ ok: true });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const executor = makeExecutor();
+
+    await runCommand(executor, ["--sandbox"]);
+
+    expect(sandbox).toHaveBeenCalledOnce();
+    expect(executor.call).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { flags: ["--trace"] },
+    { flags: ["--strategy", "minimal"] },
+    { flags: ["--stream"] },
+  ])("rejects $flags before execution", async ({ flags }) => {
+    const { Sandbox } = await import("../src/security/sandbox.js");
+    const sandbox = vi.spyOn(Sandbox.prototype, "execute").mockResolvedValue({ ok: true });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__exit__");
+    }) as never);
+    const executor = {
+      call: vi.fn(),
+      callWithTrace: vi.fn().mockResolvedValue([
+        { ok: true },
+        { strategyName: "standard", totalDurationMs: 1, success: true, steps: [] },
+      ]),
+      stream: vi.fn(async function* () { yield { ok: true }; }),
+    };
+    await expect(runCommand(executor, ["--sandbox", ...flags])).rejects.toThrow("__exit__");
+
+    expect(exit).toHaveBeenCalledWith(2);
+    expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("--sandbox");
+    expect(executor.call).not.toHaveBeenCalled();
+    expect(executor.callWithTrace).not.toHaveBeenCalled();
+    expect(executor.stream).not.toHaveBeenCalled();
+    expect(sandbox).not.toHaveBeenCalled();
+  });
+});
+
+it("rejects sandboxing with a strategy set through the environment", async () => {
+  vi.stubEnv("APCORE_CLI_STRATEGY", "minimal");
+  try {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__exit__");
+    }) as never);
+    const executor = {
+      call: vi.fn(),
+      callWithTrace: vi.fn().mockResolvedValue([
+        { ok: true },
+        { strategyName: "minimal", totalDurationMs: 1, success: true, steps: [] },
+      ]),
+    };
+    const command = buildModuleCommand(makeMod("post.status"), executor);
+
+    await expect(command.parseAsync(["--sandbox"], { from: "user" })).rejects.toThrow("__exit__");
+
+    expect(exit).toHaveBeenCalledWith(2);
+    expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("--sandbox");
+    expect(executor.callWithTrace).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

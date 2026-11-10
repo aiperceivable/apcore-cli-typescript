@@ -9,9 +9,9 @@
 
 import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
-import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { Command, CommanderError, Option } from "commander";
+import packageInfo from "../package.json" with { type: "json" };
 import { EXIT_CODES, exitCodeForError, MaxDepthExceededError, CircularRefError, UnresolvableRefError, SchemaValidationError } from "./errors.js";
 import { resolveRefs } from "./ref-resolver.js";
 import { schemaToCliOptions } from "./schema-parser.js";
@@ -65,8 +65,6 @@ import { ExposureFilter } from "./exposure.js";
 import { AuditLogger, setAuditLogger } from "./security/audit.js";
 import type { Executor, ModuleDescriptor, Registry } from "./cli.js";
 import { canonicalFormatHelp } from "./canonical-help.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Whether --all-options was passed (controls help detail level).
@@ -175,13 +173,20 @@ export function resolveStringOption(
   return undefined;
 }
 
-let VERSION = "0.0.0";
-try {
-  const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "../package.json"), "utf-8"));
-  VERSION = pkg.version;
-} catch {
-  // Bundled environments (e.g., Bun compile) may not have package.json accessible
+/** Reject execution options that the sandbox runner cannot honor. */
+export function validateSandboxOptions(
+  sandbox: boolean,
+  trace: boolean,
+  stream: boolean,
+  strategy?: string,
+): void {
+  if (sandbox && (trace || stream || strategy)) {
+    process.stderr.write("Error: --sandbox cannot be combined with --trace, --strategy, or --stream.\n");
+    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+  }
 }
+
+const VERSION = packageInfo.version;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -338,8 +343,16 @@ export interface APCore {
   executor: Executor;
 }
 
-/** Options for createCli. */
-export interface CreateCliOptions {
+/** Controls how a successful, non-streaming module result is delivered. */
+export interface ModuleResultOptions {
+  /** Print the result to stdout. Defaults to true. */
+  printResult?: boolean;
+  /** Receives the raw result and canonical module ID before success is audited. */
+  onResult?: (result: unknown, moduleId: string) => void | Promise<void>;
+}
+
+/** Options for createCli. Result options apply to the built-in exec command. */
+export interface CreateCliOptions extends ModuleResultOptions {
   extensionsDir?: string;
   progName?: string;
   /**
@@ -461,6 +474,7 @@ export function createCli(
   let allowedPrefixes: string[] | undefined;
   let builtinGroupName: string | undefined;
   let aclOption: string | object | undefined;
+  let resultOptions: ModuleResultOptions | undefined;
   if (typeof extensionsDirOrOpts === "object" && extensionsDirOrOpts !== null) {
     extensionsDir = extensionsDirOrOpts.extensionsDir;
     progName = extensionsDirOrOpts.progName ?? progName;
@@ -479,6 +493,8 @@ export function createCli(
     builtinGroupName = extensionsDirOrOpts.builtinGroupName;
     allowedPrefixes = extensionsDirOrOpts.allowedPrefixes;
     aclOption = extensionsDirOrOpts.acl;
+    const { printResult, onResult } = extensionsDirOrOpts;
+    resultOptions = { printResult, onResult };
   } else {
     extensionsDir = extensionsDirOrOpts;
   }
@@ -739,6 +755,7 @@ export function createCli(
     exposureFilter,
     cliAcl,
     aclSource,
+    resultOptions,
   );
 
   // Footer hints for discoverability
@@ -841,6 +858,7 @@ function _registerApcliSubcommands(
   exposureFilter: ExposureFilter,
   acl: ACL | null = null,
   aclSource: string | null = null,
+  resultOptions?: ModuleResultOptions,
 ): void {
   // Standalone-mode fallback registry. Previously returned an empty list +
   // null; that silently masked the "no registry wired" contract gap — users
@@ -862,7 +880,7 @@ function _registerApcliSubcommands(
   const TABLE: _RegistrarEntry[] = [
     { name: "list",              requiresExecutor: false, register: (g) => registerListCommand(g, effectiveRegistry, exposureFilter) },
     { name: "describe",          requiresExecutor: false, register: (g) => registerDescribeCommand(g, effectiveRegistry) },
-    { name: "exec",              requiresExecutor: true,  register: (g, _r, ex) => registerExecCommand(g, effectiveRegistry, ex!) },
+    { name: "exec",              requiresExecutor: true,  register: (g, _r, ex) => registerExecCommand(g, effectiveRegistry, ex!, resultOptions) },
     { name: "validate",          requiresExecutor: true,  register: (g, _r, ex) => registerValidateCommand(g, effectiveRegistry, ex!) },
     { name: "init",              requiresExecutor: false, register: (g) => registerInitCommand(g) },
     { name: "health",            requiresExecutor: true,  register: (g, _r, ex) => registerHealthCommand(g, ex!) },
@@ -1104,6 +1122,7 @@ export function buildModuleCommand(
   helpTextMaxLength = 1000,
   cmdName?: string,
   verbose = verboseHelp,
+  { printResult = true, onResult }: ModuleResultOptions = {},
 ): Command {
   const moduleId = moduleDef.moduleId;
   let resolvedSchema: Record<string, unknown> = {};
@@ -1234,6 +1253,7 @@ export function buildModuleCommand(
     const traceFlag = options.trace as boolean;
     const streamFlag = options.stream as boolean;
     const strategyName = resolveStringOption(options.strategy, process.env.APCORE_CLI_STRATEGY);
+    if (!dryRun) validateSandboxOptions(sandboxEnabled, traceFlag, streamFlag, strategyName);
     const approvalTimeout = resolveIntOption(
       options.approvalTimeout as number | undefined,
       process.env.APCORE_CLI_APPROVAL_TIMEOUT,
@@ -1375,8 +1395,8 @@ export function buildModuleCommand(
         const durationMs = Math.round(performance.now() - startTime);
 
         // Print result
-        const resolved = resolveFormat(outputFormat);
-        if (resolved === "json" || !process.stdout.isTTY) {
+        const traceToStderr = resolveFormat(outputFormat) !== "json" && process.stdout.isTTY;
+        if (printResult && !traceToStderr) {
           // Merge _trace into JSON output. JSON keys remain snake_case to
           // match the cross-language CLI output contract; runtime reads use
           // the camelCase shape returned by apcore-js PipelineTrace.
@@ -1398,8 +1418,8 @@ export function buildModuleCommand(
             output = { result, _trace: traceData };
           }
           process.stdout.write(JSON.stringify(output, null, 2) + "\n");
-        } else {
-          formatExecResult(result, outputFormat, outputFields);
+        } else if (traceToStderr) {
+          if (printResult) formatExecResult(result, outputFormat, outputFields);
           // Print trace to stderr
           const stepCount = trace.steps.length;
           process.stderr.write(
@@ -1415,6 +1435,7 @@ export function buildModuleCommand(
             }
           }
         }
+        if (onResult) await onResult(result, moduleId);
         // Audit log AFTER format (canonical ordering: format \u2192 audit on success)
         const { getAuditLogger: getAL2 } = await import("./security/audit.js");
         const al2 = getAL2();
@@ -1449,7 +1470,8 @@ export function buildModuleCommand(
       const durationMs = Math.round(performance.now() - startTime);
 
       // 6. Format and print result first (canonical order: format → audit)
-      formatExecResult(result, outputFormat, outputFields);
+      if (printResult) formatExecResult(result, outputFormat, outputFields);
+      if (onResult) await onResult(result, moduleId);
 
       // 7. Audit log (success) — called AFTER format so formatter exceptions
       //    suppress the success entry (matches Python canonical ordering).
