@@ -151,6 +151,39 @@ non-streaming call. The command awaits async callbacks. Set these options on
 leaves preflight reports, streaming output, errors, and terminal traces on
 their own output paths.
 
+#### Own the failure path
+
+A host that embeds a module command can observe, translate, or replace the
+failure path instead of inheriting `process.exit(45)`:
+
+```typescript
+const status = buildModuleCommand(descriptor, executor, undefined, "status", undefined, {
+  printResult: false,
+  // apcore code → host exit code
+  exitCodes: { SCHEMA_VALIDATION_ERROR: 2 },
+  async onError({ error, exitCode, code, moduleId }) {
+    log.warn({ code, moduleId, exitCode }, "module command failed");
+  },
+  // Defaults to setExitHandler() → process.exit. Throw to unwind instead.
+  exit(code) {
+    throw new CliExit(code);
+  },
+  // Agent contract: stdout carries exactly one document, even on failure.
+  errorStream: "stdout",
+  // Inject a program-level flag into module input before validation.
+  extraInput: (command) => ({ json: command.optsWithGlobals().json }),
+});
+
+// Library code (collectInput, createCli, built-in commands) no longer calls
+// process.exit directly; install one handler for everything:
+setExitHandler((code) => { throw new CliExit(code); });
+```
+
+Validation still runs before `execute` — that ordering is what keeps invalid
+input from reaching module code — but the resulting error now reaches
+`onError` and `exitCodes` instead of terminating the host.
+
+
 ## Integration with Existing Projects
 
 ### Typical apcore project structure

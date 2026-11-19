@@ -8,13 +8,16 @@
  */
 
 import { Command, Option } from "commander";
+import { exitWith } from "./exit.js";
 import { checkApproval } from "./approval.js";
 import { getAnnotation } from "./annotations.js";
 import { listAllDefinitions } from "./cli.js";
 import type { Executor, ModuleDescriptor, Registry } from "./cli.js";
-import { EXIT_CODES, exitCodeForError } from "./errors.js";
-import { validateModuleId, collectInput, validateSandboxOptions } from "./main.js";
+import { EXIT_CODES, exitCodeForError, InvalidCliInputError, ModuleNotFoundError } from "./errors.js";
+import { reportModuleError, resolveModuleError } from "./error-output.js";
+import { validateModuleId, collectInput, readModuleInput, validateSandboxOptions } from "./main.js";
 import type { ModuleResultOptions } from "./main.js";
+import { assertValidModuleId } from "./validate.js";
 import {
   formatExecResult,
   formatModuleDetail,
@@ -38,7 +41,7 @@ function validateTag(tag: string): void {
     process.stderr.write(
       `Error: Invalid tag format: '${tag}'. Tags must match [a-z][a-z0-9_-]*.\n`,
     );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 }
 
@@ -234,7 +237,7 @@ export function registerDescribeCommand(
         process.stderr.write(
           `Error: Module '${moduleId}' not found.\n`,
         );
-        process.exit(EXIT_CODES.MODULE_NOT_FOUND);
+        exitWith(EXIT_CODES.MODULE_NOT_FOUND);
       }
 
       const fmt = resolveFormat(opts.format);
@@ -256,9 +259,11 @@ export function registerExecCommand(
   apcliGroup: Command,
   registry: Registry,
   executor: Executor,
-  { printResult = true, onResult }: ModuleResultOptions = {},
+  resultOptions: ModuleResultOptions = {},
 ): void {
+  const { printResult = true, onResult } = resultOptions;
   const execCmd = new Command("exec")
+    .exitOverride()
     .description("Execute a module by ID with JSON input.")
     .argument("<module-id>", "Module ID to execute")
     .option("--format <format>", "Output format (json, table, csv, yaml, jsonl).")
@@ -293,39 +298,41 @@ export function registerExecCommand(
         stream: boolean;
       },
     ) => {
-      validateModuleId(moduleId);
-
-      const moduleDef = registry.getDefinition(moduleId);
-      if (!moduleDef) {
-        process.stderr.write(`Error: Module '${moduleId}' not found.\n`);
-        process.exit(EXIT_CODES.MODULE_NOT_FOUND);
-      }
-
-      if (!opts.dryRun) validateSandboxOptions(opts.sandbox, opts.trace, opts.stream, opts.strategy);
-
-      // Parse --input. Distinguish between a stdin marker ("-") — delegated
-      // to collectInput — and an inline JSON literal, which we parse directly
-      // here since collectInput only treats "-" specially.
       let merged: Record<string, unknown> = {};
-      if (opts.input === "-") {
-        merged = await collectInput("-", {}, false);
-      } else if (opts.input !== undefined) {
-        try {
-          const parsed = JSON.parse(opts.input);
-          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            process.stderr.write("Error: --input JSON must be an object.\n");
-            process.exit(EXIT_CODES.INVALID_CLI_INPUT);
-          }
-          merged = parsed as Record<string, unknown>;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`Error: --input is not valid JSON: ${msg}\n`);
-          process.exit(EXIT_CODES.INVALID_CLI_INPUT);
-        }
-      }
-
       const startTime = performance.now();
       try {
+        if (!opts.dryRun) validateSandboxOptions(opts.sandbox, opts.trace, opts.stream, opts.strategy);
+        assertValidModuleId(moduleId);
+
+        const moduleDef = registry.getDefinition(moduleId);
+        if (!moduleDef) throw new ModuleNotFoundError(`Module '${moduleId}' not found.`);
+
+        if (opts.input === "-") {
+          merged = await readModuleInput("-", {});
+        } else if (opts.input !== undefined) {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(opts.input);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new InvalidCliInputError(`--input is not valid JSON: ${message}`);
+          }
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            throw new InvalidCliInputError("--input JSON must be an object.");
+          }
+          merged = parsed as Record<string, unknown>;
+        }
+
+        if (resultOptions.extraInput !== undefined) {
+          const extra =
+            typeof resultOptions.extraInput === "function"
+              ? await resultOptions.extraInput(execCmd)
+              : resultOptions.extraInput;
+          if (extra === null || typeof extra !== "object" || Array.isArray(extra)) {
+            throw new InvalidCliInputError("extraInput must resolve to a plain object");
+          }
+          merged = { ...merged, ...extra };
+        }
         // FE-14 §4.10 — see main.ts buildModuleCommand: the sandboxed path
         // carries no ACL, so the decision is reached here, before the gate,
         // and its approval requirement composes with the annotation.
@@ -373,18 +380,17 @@ export function registerExecCommand(
           auditLogger.logExecution(moduleId, merged, "success", 0, durationMs);
         }
       } catch (err: unknown) {
-        const exitCode = exitCodeForError(err);
+        const failure = resolveModuleError(err, moduleId, resultOptions.exitCodes);
         const durationMs = Math.round(performance.now() - startTime);
         try {
           const auditLogger = getAuditLogger();
           if (auditLogger) {
-            auditLogger.logExecution(moduleId, merged, "error", exitCode, durationMs);
+            auditLogger.logExecution(moduleId, merged, "error", failure.exitCode, durationMs);
           }
         } catch {
           // Ignore audit failures during error handling
         }
-        process.stderr.write(`Error: ${err instanceof Error ? err.message : err}\n`);
-        process.exit(exitCode);
+        await reportModuleError(failure, resultOptions, opts.format);
       }
     });
   apcliGroup.addCommand(execCmd);
@@ -409,14 +415,14 @@ export function registerValidateCommand(
       const moduleDef = registry.getDefinition(moduleId);
       if (!moduleDef) {
         process.stderr.write(`Error: Module '${moduleId}' not found.\n`);
-        process.exit(EXIT_CODES.MODULE_NOT_FOUND);
+        exitWith(EXIT_CODES.MODULE_NOT_FOUND);
       }
 
       const merged = opts.input ? await collectInput(opts.input, {}, false) : {};
 
       if (!executor.validate) {
         process.stderr.write("Error: Executor does not support validate.\n");
-        process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+        exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
       }
 
       // Mirror buildModuleCommand's dry-run path: no approval gate (preflight
@@ -425,7 +431,7 @@ export function registerValidateCommand(
       try {
         const preflight = await executor.validate(moduleId, merged, buildCliContext());
         formatPreflightResult(preflight, opts.format);
-        process.exit(preflight.valid ? 0 : firstFailedExitCode(preflight));
+        exitWith(preflight.valid ? 0 : firstFailedExitCode(preflight));
       } catch (err: unknown) {
         const exitCode = exitCodeForError(err);
         try {
@@ -437,7 +443,7 @@ export function registerValidateCommand(
           // Ignore audit failures during error handling
         }
         process.stderr.write(`Error: ${err instanceof Error ? err.message : err}\n`);
-        process.exit(exitCode);
+        exitWith(exitCode);
       }
     });
   cli.addCommand(validateCmd);

@@ -12,6 +12,7 @@
  */
 
 import { Command, Option } from "commander";
+import { exitWith } from "./exit.js";
 import {
   Context,
   createIdentity,
@@ -314,7 +315,7 @@ function registerCheckSubcommand(aclGroup: Command, acl: ACL | null): void {
     ) => {
       if (!acl) {
         process.stderr.write(`Error: ${NO_ACL_MESSAGE}\n`);
-        process.exit(EXIT_CODES.ACL_RULE_ERROR);
+        exitWith(EXIT_CODES.ACL_RULE_ERROR);
       }
 
       let args: Record<string, unknown> | null = null;
@@ -323,13 +324,13 @@ function registerCheckSubcommand(aclGroup: Command, acl: ACL | null): void {
           const parsed: unknown = JSON.parse(opts.input);
           if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
             process.stderr.write("Error: --input JSON must be an object.\n");
-            process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+            exitWith(EXIT_CODES.INVALID_CLI_INPUT);
           }
           args = parsed as Record<string, unknown>;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`Error: --input is not valid JSON: ${msg}\n`);
-          process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+          exitWith(EXIT_CODES.INVALID_CLI_INPUT);
         }
       }
 
@@ -384,9 +385,9 @@ function registerCheckSubcommand(aclGroup: Command, acl: ACL | null): void {
       // make this exit code unusable for scripted policy checks (FE-14 §4.5).
       if (decision.access === "deny") {
         process.stderr.write(`Access denied: ${caller} -> ${target}\n`);
-        process.exit(EXIT_CODES.ACL_DENIED);
+        exitWith(EXIT_CODES.ACL_DENIED);
       }
-      process.exit(EXIT_CODES.SUCCESS);
+      exitWith(EXIT_CODES.SUCCESS);
     });
   aclGroup.addCommand(cmd);
 }
@@ -418,7 +419,7 @@ function registerValidateSubcommand(aclGroup: Command, acl: ACL | null): void {
     .action((opts: { format?: string }) => {
       if (!acl) {
         process.stderr.write(`Error: ${NO_ACL_MESSAGE}\n`);
-        process.exit(EXIT_CODES.ACL_RULE_ERROR);
+        exitWith(EXIT_CODES.ACL_RULE_ERROR);
       }
 
       const findings = [...acl.validateRules()];
@@ -461,7 +462,7 @@ function registerValidateSubcommand(aclGroup: Command, acl: ACL | null): void {
       // Strict, CI-friendly default: any finding is a failure. The JSON output
       // carries each finding's `effect` so a caller that wants to gate only on
       // deny rules can do so (FE-14 §4.6, open question 1).
-      process.exit(
+      exitWith(
         findings.length === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.ACL_RULE_ERROR,
       );
     });
@@ -516,7 +517,7 @@ function registerStatusSubcommand(
           "Error: this executor does not expose governanceState(); " +
             "upgrade apcore-js to >= 0.29.0.\n",
         );
-        process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+        exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
       }
 
       const state = executor.governanceState();
@@ -548,9 +549,9 @@ function registerStatusSubcommand(
 
       if (opts.strict && state.unprotectedControlSurface) {
         process.stderr.write("Unprotected control surface.\n");
-        process.exit(EXIT_CODES.ACL_RULE_ERROR);
+        exitWith(EXIT_CODES.ACL_RULE_ERROR);
       }
-      process.exit(EXIT_CODES.SUCCESS);
+      exitWith(EXIT_CODES.SUCCESS);
     });
   aclGroup.addCommand(cmd);
 }

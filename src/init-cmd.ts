@@ -3,6 +3,7 @@
  */
 
 import { Command } from "commander";
+import { exitWith } from "./exit.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { EXIT_CODES } from "./errors.js";
@@ -22,7 +23,7 @@ function guardOverwrite(filepath: string, force: boolean): void {
     process.stderr.write(
       `Error: '${filepath}' already exists. Pass -f/--force to overwrite.\n`,
     );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 }
 
@@ -42,7 +43,7 @@ function runFsOp<T>(op: string, targetPath: string, fn: () => T, partial?: strin
         `  Partial scaffold left on disk — you may want to remove: ${partial.join(", ")}\n`,
       );
     }
-    process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+    exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
   }
 }
 
@@ -138,7 +139,7 @@ export function registerInitCommand(cli: Command): void {
       const dir = opts.dir ?? (style === "decorator" ? "extensions" : style === "binding" ? "bindings" : "commands");
       if (dir.split(path.sep).includes("..") || dir.split("/").includes("..")) {
         process.stderr.write(`Error: Output directory must not contain '..' path components.\n`);
-        process.exit(2);
+        exitWith(2);
       }
 
       switch (style) {
@@ -153,7 +154,7 @@ export function registerInitCommand(cli: Command): void {
           break;
         default:
           process.stderr.write(`Error: Unknown style '${style}'\n`);
-          process.exit(2);
+          exitWith(2);
       }
     });
 }

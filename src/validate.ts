@@ -6,7 +6,8 @@
  * find the helper at the same path in each tree (audit D8-W2).
  */
 
-import { EXIT_CODES } from "./errors.js";
+import { EXIT_CODES, InvalidCliInputError } from "./errors.js";
+import { exitWith } from "./exit.js";
 
 /** Module-ID syntax: dot-separated lowercase segments, each `[a-z][a-z0-9_]*`. */
 const MODULE_ID_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
@@ -26,20 +27,27 @@ export const MAX_MODULE_ID_LENGTH = 192;
  * Pattern: `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*` — max 192 chars.
  *
  * On invalid input, writes a human-readable error to stderr and calls
- * `process.exit(EXIT_CODES.INVALID_CLI_INPUT)`. Cross-SDK parity with Python
+ * `exitWith(EXIT_CODES.INVALID_CLI_INPUT)`. Cross-SDK parity with Python
  * `apcore_cli.validate.validate_module_id` and Rust `validate_module_id`.
  */
 export function validateModuleId(moduleId: string): void {
+  try {
+    assertValidModuleId(moduleId);
+  } catch (error) {
+    if (!(error instanceof InvalidCliInputError)) throw error;
+    process.stderr.write(`Error: ${error.message}\n`);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
+  }
+}
+
+/** Validate a module ID inside a dispatch that reports its own errors. */
+export function assertValidModuleId(moduleId: string): void {
   if (moduleId.length > MAX_MODULE_ID_LENGTH) {
-    process.stderr.write(
-      `Error: Invalid module ID format: '${moduleId}'. Maximum length is ${MAX_MODULE_ID_LENGTH} characters.\n`,
+    throw new InvalidCliInputError(
+      `Invalid module ID format: '${moduleId}'. Maximum length is ${MAX_MODULE_ID_LENGTH} characters.`,
     );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
   }
   if (!MODULE_ID_PATTERN.test(moduleId)) {
-    process.stderr.write(
-      `Error: Invalid module ID format: '${moduleId}'.\n`,
-    );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    throw new InvalidCliInputError(`Invalid module ID format: '${moduleId}'.`);
   }
 }

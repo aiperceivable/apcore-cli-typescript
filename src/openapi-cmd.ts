@@ -16,6 +16,7 @@
  */
 
 import * as fs from "node:fs";
+import { exitWith } from "./exit.js";
 import * as path from "node:path";
 import { Command, Option } from "commander";
 import yaml from "js-yaml";
@@ -103,7 +104,7 @@ function assertValidRegex(flag: string, pattern: string | undefined): void {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: Invalid regex for --${flag}: ${detail}\n`);
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 }
 
@@ -140,7 +141,7 @@ async function loadAndScan(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${msg}\n`);
-    process.exit(
+    exitWith(
       err instanceof InvalidHeaderError
         ? EXIT_CODES.INVALID_CLI_INPUT
         : err instanceof OpenapiSourceError
@@ -157,11 +158,11 @@ async function loadAndScan(
       // The toolkit's message names the offending `openapi` value and states
       // that Swagger 2.0 is unsupported — reproduced verbatim (FE-15a §6).
       process.stderr.write(`Error: ${err.message}\n`);
-      process.exit(EXIT_CODES.CONFIG_INVALID);
+      exitWith(EXIT_CODES.CONFIG_INVALID);
     }
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: ${msg}\n`);
-    process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+    exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
   }
 
   return { spec, modules };
@@ -437,7 +438,7 @@ function registerGenerateSubcommand(group: Command): void {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`Error: ${msg}\n`);
-          process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+          exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
         }
       }
 
@@ -463,7 +464,7 @@ function registerGenerateSubcommand(group: Command): void {
       // A write the user asked for and did not get is a real fault. Skipped
       // files are not — those are the documented non-destructive default.
       if (failures.length > 0) {
-        process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+        exitWith(EXIT_CODES.MODULE_EXECUTE_ERROR);
       }
     });
   group.addCommand(cmd);

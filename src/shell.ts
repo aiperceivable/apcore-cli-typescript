@@ -5,6 +5,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { exitWith } from "./exit.js";
 import { Command, Help, Option } from "commander";
 import { EXIT_CODES } from "./errors.js";
 
@@ -390,7 +391,7 @@ export function configureManHelp(
       } else {
         process.stdout.write(roff);
       }
-      process.exit(0);
+      exitWith(0);
     }
     return "";
   });
@@ -428,7 +429,7 @@ export function registerCompletionCommand(host: Command): void {
         process.stderr.write(
           `Error: Unknown shell '${shell}'. Expected: bash, zsh, or fish.\n`,
         );
-        process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+        exitWith(EXIT_CODES.INVALID_CLI_INPUT);
       }
 
       const root = findRootProgram(host);

@@ -8,11 +8,13 @@
  */
 
 import { readFileSync } from "node:fs";
-import { inspect } from "node:util";
 import * as path from "node:path";
 import { Command, CommanderError, Option } from "commander";
 import packageInfo from "../package.json" with { type: "json" };
-import { EXIT_CODES, exitCodeForError, MaxDepthExceededError, CircularRefError, UnresolvableRefError, SchemaValidationError } from "./errors.js";
+import { EXIT_CODES, exitCodeForError, MaxDepthExceededError, CircularRefError, UnresolvableRefError, SchemaValidationError, ModuleExecutionError, InvalidCliInputError } from "./errors.js";
+import { exitWith } from "./exit.js";
+import { reportModuleError, resolveModuleError } from "./error-output.js";
+import type { ErrorStream } from "./error-output.js";
 import { resolveRefs } from "./ref-resolver.js";
 import { schemaToCliOptions } from "./schema-parser.js";
 import { checkApproval } from "./approval.js";
@@ -94,12 +96,14 @@ let docsUrl: string | null = null;
 
 /**
  * Set the base URL for online documentation links shown in help and man pages.
- * Pass null to disable. Command-level help appends `/commands/{name}` automatically.
+ * Pass null to disable. Command-level help appends `/commands/{module path}`
+ * automatically. A trailing slash on the base URL is removed so the link never
+ * contains `//`.
  *
  * @example setDocsUrl("https://docs.apcore.dev/cli");
  */
 export function setDocsUrl(url: string | null): void {
-  docsUrl = url;
+  docsUrl = url === null ? null : url.replace(/\/+$/, "");
 }
 
 /** Check if --all-options is present in process.argv (pre-parse, before Commander). */
@@ -181,8 +185,7 @@ export function validateSandboxOptions(
   strategy?: string,
 ): void {
   if (sandbox && (trace || stream || strategy)) {
-    process.stderr.write("Error: --sandbox cannot be combined with --trace, --strategy, or --stream.\n");
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    throw new InvalidCliInputError("--sandbox cannot be combined with --trace, --stream, or --strategy.");
   }
 }
 
@@ -261,76 +264,6 @@ function validateInputSchema(
 }
 
 // ---------------------------------------------------------------------------
-// Enhanced error output (F3)
-// ---------------------------------------------------------------------------
-
-/**
- * Emit structured JSON error to stderr for AI agents.
- *
- * Module-private. The only consumer is buildModuleCommand's action handler
- * within this same file (audit D9-W2).
- */
-function emitErrorJson(e: unknown, exitCode: number): void {
-  const err = e instanceof Error ? e : new Error(String(e));
-  const errRecord = err as unknown as Record<string, unknown>;
-  const code = errRecord.code ?? "UNKNOWN";
-  const payload: Record<string, unknown> = {
-    error: true,
-    code,
-    message: err.message,
-    exit_code: exitCode,
-  };
-  for (const field of ["details", "suggestion", "ai_guidance", "retryable", "user_fixable"]) {
-    const val = errRecord[field];
-    if (val !== undefined && val !== null) {
-      payload[field] = val;
-    }
-  }
-  process.stderr.write(JSON.stringify(payload) + "\n");
-}
-
-/**
- * Emit human-readable error to stderr with guidance fields.
- *
- * Module-private. The only consumer is buildModuleCommand's action handler
- * within this same file (audit D9-W2).
- */
-function emitErrorTty(e: unknown, exitCode: number): void {
-  const err = e instanceof Error ? e : new Error(String(e));
-  const errRecord = err as unknown as Record<string, unknown>;
-  const code = errRecord.code;
-  const header = code ? `Error [${code}]: ${err.message}` : `Error: ${err.message}`;
-  process.stderr.write(header + "\n");
-
-  const details = errRecord.details;
-  if (details && typeof details === "object" && !Array.isArray(details)) {
-    process.stderr.write("\n  Details:\n");
-    for (const [k, v] of Object.entries(details as Record<string, unknown>)) {
-      let detail: string;
-      try {
-        detail = typeof v === "object" && v !== null ? JSON.stringify(v) ?? String(v) : String(v);
-      } catch {
-        detail = inspect(v, { depth: 4, customInspect: false });
-      }
-      process.stderr.write(`    ${k}: ${detail}\n`);
-    }
-  }
-
-  const suggestion = errRecord.suggestion;
-  if (suggestion) {
-    process.stderr.write(`\n  Suggestion: ${suggestion}\n`);
-  }
-
-  const retryable = errRecord.retryable;
-  if (retryable !== undefined && retryable !== null) {
-    const label = retryable ? "Yes" : "No (same input will fail again)";
-    process.stderr.write(`  Retryable: ${label}\n`);
-  }
-
-  process.stderr.write(`\n  Exit code: ${exitCode}\n`);
-}
-
-// ---------------------------------------------------------------------------
 // createCli
 // ---------------------------------------------------------------------------
 
@@ -343,12 +276,60 @@ export interface APCore {
   executor: Executor;
 }
 
+export type { ErrorStream } from "./error-output.js";
+
+/** Context handed to {@link ModuleResultOptions.onError} before the exit runs. */
+export interface ModuleErrorContext {
+  /** The error that failed the call (validation, approval, execution, ...). */
+  error: unknown;
+  /** Effective exit code, after {@link ModuleResultOptions.exitCodes} mapping. */
+  exitCode: number;
+  /** The apcore error code, when the failure carries one. */
+  code: string | null;
+  /** Canonical ID of the module that was invoked. */
+  moduleId: string;
+}
+
 /** Controls how a successful, non-streaming module result is delivered. */
 export interface ModuleResultOptions {
   /** Print the result to stdout. Defaults to true. */
   printResult?: boolean;
   /** Receives the raw result and canonical module ID before success is audited. */
   onResult?: (result: unknown, moduleId: string) => void | Promise<void>;
+  /**
+   * Called after a failure has been classified and before the process exits.
+   * Embedded hosts use this to log, translate, or replace the exit entirely
+   * (pair it with {@link exit}). Awaited.
+   */
+  onError?: (context: ModuleErrorContext) => void | Promise<void>;
+  /**
+   * Translate apcore error codes into host exit codes. Keys are the values of
+   * `error.code` (`SCHEMA_VALIDATION_ERROR`, `MODULE_TIMEOUT`, ...). Unmapped
+   * codes keep the CLI's own mapping.
+   */
+  exitCodes?: Record<string, number>;
+  /**
+   * Replace the exit action for this command. Defaults to the process-wide
+   * handler installed with `setExitHandler()` (which defaults to
+   * `process.exit`). Pass a function that throws or records the code to keep
+   * the host process alive.
+   */
+  exit?: (code: number) => void;
+  /**
+   * Where the JSON / human-readable failure envelope is written. Defaults to
+   * stderr. Agent-facing hosts that require "stdout contains exactly one
+   * document on failure" set this to `"stdout"`.
+   */
+  errorStream?: ErrorStream;
+  /**
+   * Extra input merged after stdin / CLI keyword input and before schema
+   * validation. Use it to inject host-level flags (e.g. a program-level
+   * `--json`) that are part of the module's input contract. A function
+   * receives the command so it can read `command.optsWithGlobals()`.
+   */
+  extraInput?:
+    | Record<string, unknown>
+    | ((command: Command) => Record<string, unknown> | Promise<Record<string, unknown>>);
 }
 
 /** Options for createCli. Result options apply to the built-in exec command. */
@@ -493,8 +474,16 @@ export function createCli(
     builtinGroupName = extensionsDirOrOpts.builtinGroupName;
     allowedPrefixes = extensionsDirOrOpts.allowedPrefixes;
     aclOption = extensionsDirOrOpts.acl;
-    const { printResult, onResult } = extensionsDirOrOpts;
-    resultOptions = { printResult, onResult };
+    const {
+      printResult,
+      onResult,
+      onError,
+      exitCodes,
+      exit,
+      errorStream,
+      extraInput,
+    } = extensionsDirOrOpts;
+    resultOptions = { printResult, onResult, onError, exitCodes, exit, errorStream, extraInput };
   } else {
     extensionsDir = extensionsDirOrOpts;
   }
@@ -522,7 +511,7 @@ export function createCli(
   // Validate parameter combination: app is mutually exclusive with registry/executor.
   if (app && (registry || executor)) {
     process.stderr.write("Error: app is mutually exclusive with registry/executor\n");
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   // Extract registry/executor from APCore unified client when provided.
@@ -534,7 +523,7 @@ export function createCli(
   // Validate parameter combination: executor without registry is invalid.
   if (executor && !registry) {
     process.stderr.write("Error: executor requires registry — pass both or neither\n");
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   // Wire CliApprovalHandler to the executor (FE-11 §3.5) so module calls that
@@ -639,7 +628,7 @@ export function createCli(
   } catch (e) {
     // ApcliGroup name validation failure or conflict — exit 2.
     process.stderr.write(`Error: ${e instanceof Error ? e.message : String(e)}\n`);
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   // Sync the module-level reserved-group cache so cli.ts's `assertNotReserved`
@@ -685,7 +674,7 @@ export function createCli(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Error: invalid 'expose' option — ${msg}\n`);
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   // -------------------------------------------------------------------------
@@ -741,7 +730,7 @@ export function createCli(
       // configured an ACL and would otherwise run unprotected.
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Error: failed to attach ACL: ${msg}\n`);
-      process.exit(EXIT_CODES.ACL_RULE_ERROR);
+      exitWith(EXIT_CODES.ACL_RULE_ERROR);
     }
   } else {
     setAttachedAcl(null);
@@ -787,14 +776,14 @@ export function createCli(
         process.stderr.write(
           `Error: extraCommands name '${cmdName}' is reserved\n`,
         );
-        process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+        exitWith(EXIT_CODES.INVALID_CLI_INPUT);
       }
       const existing = program.commands.find((c) => c.name() === cmdName);
       if (existing) {
         process.stderr.write(
           `Error: extraCommands name '${cmdName}' collides with an existing command\n`,
         );
-        process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+        exitWith(EXIT_CODES.INVALID_CLI_INPUT);
       }
       program.addCommand(cmd);
     }
@@ -870,7 +859,7 @@ function _registerApcliSubcommands(
       "Error: no module registry wired. In standalone mode, pass " +
         "--extensions-dir <path> to enable module discovery.\n",
     );
-    process.exit(EXIT_CODES.CONFIG_INVALID);
+    exitWith(EXIT_CODES.CONFIG_INVALID);
   };
   const effectiveRegistry: Registry = registry ?? {
     list: () => emitUnwiredError(),
@@ -1096,13 +1085,13 @@ export function main(progName?: string): void {
   } catch (error: unknown) {
     if (error instanceof CommanderError) {
       // Commander already printed the error message
-      process.exit(error.exitCode);
+      exitWith(error.exitCode);
     }
     const code = exitCodeForError(error);
     if (error instanceof Error) {
       process.stderr.write(`Error: ${error.message}\n`);
     }
-    process.exit(code);
+    exitWith(code);
   }
 }
 
@@ -1122,8 +1111,10 @@ export function buildModuleCommand(
   helpTextMaxLength = 1000,
   cmdName?: string,
   verbose = verboseHelp,
-  { printResult = true, onResult }: ModuleResultOptions = {},
+  resultOptions: ModuleResultOptions = {},
 ): Command {
+  const { printResult = true, onResult } = resultOptions;
+  const exit = resultOptions.exit ?? exitWith;
   const moduleId = moduleDef.moduleId;
   let resolvedSchema: Record<string, unknown> = {};
   let schemaOptions: OptionConfig[] = [];
@@ -1144,18 +1135,18 @@ export function buildModuleCommand(
     } catch (err) {
       if (err instanceof MaxDepthExceededError || err instanceof CircularRefError) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(EXIT_CODES.SCHEMA_CIRCULAR_REF);
+        exitWith(EXIT_CODES.SCHEMA_CIRCULAR_REF);
       }
       if (err instanceof UnresolvableRefError) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(EXIT_CODES.SCHEMA_VALIDATION_ERROR);
+        exitWith(EXIT_CODES.SCHEMA_VALIDATION_ERROR);
       }
       resolvedSchema = inputSchema; // unexpected error: fall through to raw schema
     }
     schemaOptions = schemaToCliOptions(resolvedSchema, helpTextMaxLength);
   }
 
-  const cmd = new Command(effectiveCmdName).description(cmdHelp);
+  const cmd = new Command(effectiveCmdName).exitOverride().description(cmdHelp);
 
   // Built-in options (hidden unless --all-options)
   const inputOpt = new Option("--input <source>", "Read JSON input from a file path, or use '-' to read from stdin pipe");
@@ -1212,7 +1203,10 @@ export function buildModuleCommand(
     footerParts.push("Use --all-options to show all options (including built-in options).");
   }
   if (docsUrl) {
-    footerParts.push(`Docs: ${docsUrl}/commands/${effectiveCmdName}`);
+    // Use the canonical module path, not the command name: hosts that nest a
+    // module under a group pass `cmdName` as the leaf (`add`), which would
+    // drop the `series.asset` prefix from the documentation link.
+    footerParts.push(`Docs: ${docsUrl}/commands/${moduleId}`);
   }
   if (footerParts.length > 0) {
     cmd.addHelpText("after", "\n" + footerParts.join("\n") + "\n");
@@ -1253,7 +1247,6 @@ export function buildModuleCommand(
     const traceFlag = options.trace as boolean;
     const streamFlag = options.stream as boolean;
     const strategyName = resolveStringOption(options.strategy, process.env.APCORE_CLI_STRATEGY);
-    if (!dryRun) validateSandboxOptions(sandboxEnabled, traceFlag, streamFlag, strategyName);
     const approvalTimeout = resolveIntOption(
       options.approvalTimeout as number | undefined,
       process.env.APCORE_CLI_APPROVAL_TIMEOUT,
@@ -1278,21 +1271,35 @@ export function buildModuleCommand(
     }
 
     let merged: Record<string, unknown> = {};
+    let preflightExitCode: number | undefined;
     const startTime = performance.now();
 
     try {
+      if (!dryRun) validateSandboxOptions(sandboxEnabled, traceFlag, streamFlag, strategyName);
       // 1. Collect and merge input
-      merged = await collectInput(stdinFlag, schemaKwargs, largeInput);
+      merged = await readModuleInput(stdinFlag, schemaKwargs, largeInput);
 
       // 2. Reconvert enum values
       const reconverted = reconvertEnumValues(merged, schemaOptions);
       merged = reconverted;
 
+      // 2b. Host-injected input (program-level flags, envelope fields). Merged
+      // before validation so the values are validated like any other input.
+      if (resultOptions.extraInput !== undefined) {
+        const extra =
+          typeof resultOptions.extraInput === "function"
+            ? await resultOptions.extraInput(cmd)
+            : resultOptions.extraInput;
+        if (extra === null || typeof extra !== "object" || Array.isArray(extra)) {
+          throw new InvalidCliInputError("extraInput must resolve to a plain object");
+        }
+        merged = { ...merged, ...extra };
+      }
+
       // -- Dry-run: preflight validation only, no execution (F1) --
       if (dryRun) {
         if (!executor.validate) {
-          process.stderr.write("Error: Executor does not support validate.\n");
-          process.exit(EXIT_CODES.MODULE_EXECUTE_ERROR);
+          throw new ModuleExecutionError("Executor does not support validate.");
         }
         const preflight = await executor.validate(moduleId, merged, buildCliContext());
         formatPreflightResult(preflight, outputFormat);
@@ -1315,7 +1322,8 @@ export function buildModuleCommand(
             }
           }
         }
-        process.exit(preflight.valid ? 0 : firstFailedExitCode(preflight));
+        preflightExitCode = preflight.valid ? 0 : firstFailedExitCode(preflight);
+        return;
       }
 
       // 3. Pre-execute schema validation (parity with Python jsonschema.validate
@@ -1481,8 +1489,7 @@ export function buildModuleCommand(
         auditLogger.logExecution(moduleId, merged, "success", 0, durationMs);
       }
     } catch (err: unknown) {
-      // Enhanced error output (F3)
-      const exitCode = exitCodeForError(err);
+      const failure = resolveModuleError(err, moduleId, resultOptions.exitCodes);
       const durationMs = Math.round(performance.now() - startTime);
 
       // Audit log (error) with real elapsed duration_ms
@@ -1490,18 +1497,17 @@ export function buildModuleCommand(
         const { getAuditLogger } = await import("./security/audit.js");
         const auditLogger = getAuditLogger();
         if (auditLogger) {
-          auditLogger.logExecution(moduleId, merged, "error", exitCode, durationMs);
+          auditLogger.logExecution(moduleId, merged, "error", failure.exitCode, durationMs);
         }
       } catch {
         // Ignore audit failures during error handling
       }
 
-      if (outputFormat === "json" || !process.stderr.isTTY) {
-        emitErrorJson(err, exitCode);
-      } else {
-        emitErrorTty(err, exitCode);
-      }
-      process.exit(exitCode);
+      await reportModuleError(failure, resultOptions, outputFormat);
+    } finally {
+      // A preflight already wrote its result. Keep the host's exit outside
+      // the dispatch catch so an exception from it is never reported again.
+      if (preflightExitCode !== undefined) exit(preflightExitCode);
     }
   });
 
@@ -1526,6 +1532,21 @@ export async function collectInput(
   cliKwargs: Record<string, unknown> = {},
   largeInput?: boolean,
 ): Promise<Record<string, unknown>> {
+  try {
+    return await readModuleInput(stdinFlag, cliKwargs, largeInput);
+  } catch (error) {
+    if (!(error instanceof InvalidCliInputError)) throw error;
+    process.stderr.write(`Error: ${error.message}\n`);
+    exitWith(EXIT_CODES.INVALID_CLI_INPUT);
+  }
+}
+
+/** Collect input for a dispatch that owns its error output and exit. */
+export async function readModuleInput(
+  stdinFlag: string | undefined,
+  cliKwargs: Record<string, unknown>,
+  largeInput?: boolean,
+): Promise<Record<string, unknown>> {
   // Remove null/undefined values from CLI kwargs
   const cliKwargsNonNull: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cliKwargs)) {
@@ -1541,8 +1562,12 @@ export async function collectInput(
   let raw: string;
   let source: string;
   if (stdinFlag === "-") {
-    raw = await readStdin();
     source = "STDIN";
+    try {
+      raw = await readStdin();
+    } catch (error) {
+      throw new InvalidCliInputError(`Could not read STDIN: ${error instanceof Error ? error.message : String(error)}`);
+    }
   } else {
     // File-path source (help text: "JSON input file or '-' for stdin")
     source = `file '${stdinFlag}'`;
@@ -1550,17 +1575,15 @@ export async function collectInput(
       raw = readFileSync(stdinFlag, "utf-8");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Error: Could not read input ${source}: ${msg}\n`);
-      process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+      throw new InvalidCliInputError(`Could not read input ${source}: ${msg}`);
     }
   }
 
   const rawSize = Buffer.byteLength(raw, "utf-8");
   if (rawSize > 10_485_760 && !largeInput) {
-    process.stderr.write(
-      `Error: ${source} input exceeds 10MB limit. Use --large-input to override.\n`,
+    throw new InvalidCliInputError(
+      `${source} input exceeds 10MB limit. Use --large-input to override.`,
     );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   if (!raw) {
@@ -1571,15 +1594,13 @@ export async function collectInput(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    process.stderr.write(`Error: ${source} does not contain valid JSON.\n`);
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+    throw new InvalidCliInputError(`${source} does not contain valid JSON.`);
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    process.stderr.write(
-      `Error: ${source} JSON must be an object, got ${Array.isArray(parsed) ? "array" : typeof parsed}.\n`,
+    throw new InvalidCliInputError(
+      `${source} JSON must be an object, got ${Array.isArray(parsed) ? "array" : typeof parsed}.`,
     );
-    process.exit(EXIT_CODES.INVALID_CLI_INPUT);
   }
 
   // CLI flags override stdin/file for duplicate keys

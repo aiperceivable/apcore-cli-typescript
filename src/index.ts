@@ -16,7 +16,12 @@
 // list. Add `getVerboseHelp` / `getDocsUrl` getters in main.ts if read access
 // is later needed.
 export { createCli, main, buildModuleCommand, validateModuleId, collectInput, reconvertEnumValues, applyToolkitIntegration, setAllOptionsHelp, setVerboseHelp, setDocsUrl } from "./main.js";
-export type { OptionConfig, CreateCliOptions, ModuleResultOptions, APCore, ApplyToolkitIntegrationOptions } from "./main.js";
+export type { OptionConfig, CreateCliOptions, ModuleResultOptions, ModuleErrorContext, ErrorStream, APCore, ApplyToolkitIntegrationOptions } from "./main.js";
+
+// Process-exit indirection for embedded hosts (issue: library code called
+// process.exit directly, so hosts could neither test nor translate exit codes).
+export { setExitHandler, getExitHandler, exitWith, resetExitHandler, CliExit } from "./exit.js";
+export type { ExitHandler } from "./exit.js";
 
 // Command grouping (GroupedModuleGroup is the default click.Group; LazyModuleGroup
 // is the base class, available for downstream consumers that need to subclass it).

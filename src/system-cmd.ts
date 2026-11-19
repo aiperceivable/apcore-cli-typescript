@@ -11,6 +11,7 @@ import { Config } from "apcore-js";
 import { checkApproval } from "./approval.js";
 import type { Executor, ModuleDescriptor } from "./cli.js";
 import { exitCodeForError } from "./errors.js";
+import { exitWith } from "./exit.js";
 import { formatExecResult, resolveFormat } from "./output.js";
 
 // ---------------------------------------------------------------------------
@@ -55,7 +56,7 @@ function emitResult(
 // from generic MODULE_EXECUTE_ERROR (1).
 function emitErrorAndExit(e: unknown): never {
   process.stderr.write(`Error: ${e instanceof Error ? e.message : e}\n`);
-  process.exit(exitCodeForError(e));
+  exitWith(exitCodeForError(e));
 }
 
 /**

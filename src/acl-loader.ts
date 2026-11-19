@@ -20,6 +20,7 @@ import { ACL, ACLDeniedError, Context, createIdentity } from "apcore-js";
 import type { AuditEntry, AuditLogger as AclAuditCallback } from "apcore-js";
 import { ConfigResolver, DEFAULTS } from "./config.js";
 import { EXIT_CODES } from "./errors.js";
+import { exitWith } from "./exit.js";
 import { info as logInfo } from "./logger.js";
 import { getAuditLogger, type AclAuditRecord } from "./security/audit.js";
 
@@ -470,7 +471,7 @@ export function loadAclOrExit(
     }
     // 47 — the rule set could not be READ. Not 77: that stays reserved for a
     // real access decision (FE-14 §6.1).
-    process.exit(EXIT_CODES.ACL_RULE_ERROR);
+    exitWith(EXIT_CODES.ACL_RULE_ERROR);
   }
 }
 

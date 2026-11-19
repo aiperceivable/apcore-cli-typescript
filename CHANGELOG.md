@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.14.0] - 2026-11-19
+
+### Added
+
+- Embedded hosts can observe and translate failures: `buildModuleCommand()` and
+  `createCli()` accept `onError({ error, exitCode, code, moduleId })`,
+  `exitCodes` (apcore code → host exit code), `exit` (replace the exit action),
+  and `errorStream` (`"stdout"` for agent contracts that require the failure
+  document on stdout; defaults to stderr).
+- `extraInput` merges host-injected values (for example a program-level
+  `--json` flag read from `command.optsWithGlobals()`) into module input before
+  validation, instead of forcing hosts to wrap `execute` and merge afterwards.
+- `setExitHandler()` / `exitWith()` / `CliExit` make every library-side exit
+  go through one handler. The default calls `process.exit`. An embedded host
+  can install a handler that throws or records the code.
+
+### Security
+
+- Upgrade the runtime dependency `js-yaml` to `^4.3.2`.
+
+### Fixed
+
+- Invalid module IDs, missing modules, invalid input (including files and
+  stdin), and incompatible dispatch flags use the same error callback, output
+  destination, and exit mapping as execution failures. Module commands return
+  parser errors to embedded callers as `CommanderError`.
+- `setDocsUrl()` strips trailing slashes, so the help footer no longer emits
+  `//commands/...`. The link is built from the canonical module path rather
+  than the leaf command name, so a module nested under a group
+  (`series.asset.add` → `add`) keeps its full path.
+
+### Changed
+
+- Library code no longer calls `process.exit()` directly; `collectInput()`,
+  `createCli()`, the module commands, the built-in commands and `acl-loader`
+  route through `exitWith()`.
+- Refresh the development toolchain to `vitest` / `@vitest/coverage-v8` 5.1.0.
+
 ## [0.13.0] - 2026-11-10
 
 ### Added

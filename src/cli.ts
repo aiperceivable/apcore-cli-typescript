@@ -8,6 +8,7 @@
  */
 
 import { Command } from "commander";
+import { exitWith } from "./exit.js";
 import { buildModuleCommand } from "./main.js";
 import { getDisplay } from "./display-helpers.js";
 import { ExposureFilter } from "./exposure.js";
@@ -249,7 +250,7 @@ function assertNotReserved(
       `Use a different CLI alias.\n`;
   }
   process.stderr.write(msg);
-  process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+  exitWith(EXIT_CODES.INVALID_CLI_INPUT);
 }
 
 // ---------------------------------------------------------------------------

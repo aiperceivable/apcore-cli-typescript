@@ -6,6 +6,7 @@
 
 import type { OptionConfig } from "./main.js";
 import { EXIT_CODES } from "./errors.js";
+import { exitWith } from "./exit.js";
 import { warn as logWarn } from "./logger.js";
 
 // ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ export function schemaToCliOptions(
       process.stderr.write(
         `Error: Module schema property '${propName}' conflicts with a reserved CLI option name. Rename the property.\n`,
       );
-      process.exit(EXIT_CODES.SCHEMA_CIRCULAR_REF);
+      exitWith(EXIT_CODES.SCHEMA_CIRCULAR_REF);
     }
 
     // Collision detection — exit 48 per spec (docs/features/schema-parser.md
@@ -138,7 +139,7 @@ export function schemaToCliOptions(
       process.stderr.write(
         `Error: Flag name collision: properties '${propName}' and '${flagNames[flagName]}' both map to '${flagName}'.\n`,
       );
-      process.exit(EXIT_CODES.SCHEMA_CIRCULAR_REF);
+      exitWith(EXIT_CODES.SCHEMA_CIRCULAR_REF);
     }
     flagNames[flagName] = propName;
 
@@ -165,7 +166,7 @@ export function schemaToCliOptions(
         );
         // Audit D11-NEW-004 (2026-05-08): exit 48 per spec, matching
         // Python sys.exit(48) at schema_parser.py:137.
-        process.exit(EXIT_CODES.SCHEMA_CIRCULAR_REF);
+        exitWith(EXIT_CODES.SCHEMA_CIRCULAR_REF);
       }
       flagNames[noFlag] = propName;
       const defaultVal = (propSchema.default as boolean) ?? false;

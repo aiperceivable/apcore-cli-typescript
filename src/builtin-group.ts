@@ -11,6 +11,7 @@
  */
 
 import { EXIT_CODES } from "./errors.js";
+import { exitWith } from "./exit.js";
 import { warn } from "./logger.js";
 
 // ---------------------------------------------------------------------------
@@ -267,7 +268,7 @@ export class ApcliGroup {
   ): [ApcliGroup, null] | [null, string] {
     // Shape rejection. Note: `typeof [] === 'object'`, so arrays must be
     // excluded explicitly — otherwise they fall through to fromYaml() which
-    // process.exit()s, violating the non-panicking contract (A-D-005).
+    // exitWith()s, violating the non-panicking contract (A-D-005).
     if (
       config !== null &&
       config !== undefined &&
@@ -348,7 +349,7 @@ export class ApcliGroup {
       // ever reachable via fromCliConfig (Tier 1): fromYaml / tryFromYaml
       // both pre-filter bad shapes into a warned auto-detect fallback before
       // ever calling _build (see fromYaml's own shape-guard above, A-D-006).
-      // A hard `process.exit()` here would make an invalid *programmatic*
+      // A hard `exitWith()` here would make an invalid *programmatic*
       // config uncatchable by any caller, contradicting the spec's declared
       // catchable-TypeError-equivalent contract (Python's `from_cli_config`
       // raises `TypeError` for the same input, which `create_cli()` catches
@@ -371,13 +372,13 @@ export class ApcliGroup {
         `Error: apcli.mode must be a string; got ${typeof cfg.mode}. ` +
           `Expected one of all|none|include|exclude.\n`,
       );
-      process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+      exitWith(EXIT_CODES.INVALID_CLI_INPUT);
     } else if (!VALID_USER_MODES.has(cfg.mode)) {
       process.stderr.write(
         `Error: apcli.mode '${cfg.mode}' is invalid. ` +
           `Expected one of all|none|include|exclude.\n`,
       );
-      process.exit(EXIT_CODES.INVALID_CLI_INPUT);
+      exitWith(EXIT_CODES.INVALID_CLI_INPUT);
     } else {
       mode = cfg.mode as ApcliMode;
     }

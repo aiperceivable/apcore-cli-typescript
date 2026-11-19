@@ -7,7 +7,7 @@ import { Command, CommanderError } from "commander";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createCli, buildModuleCommand, collectInput, resolveIntOption, resolveStringOption } from "../src/main.js";
+import { createCli, buildModuleCommand, collectInput, resolveIntOption, resolveStringOption, setDocsUrl } from "../src/main.js";
 import type { ModuleDescriptor, Executor } from "../src/cli.js";
 
 afterEach(() => {
@@ -1583,4 +1583,199 @@ it("rejects sandboxing with a strategy set through the environment", async () =>
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+// ---------------------------------------------------------------------------
+// buildModuleCommand() — embedded-host hooks (onError / exitCodes / extraInput)
+// ---------------------------------------------------------------------------
+
+describe("buildModuleCommand() — embedded-host hooks", () => {
+  const requiredUrlSchema = {
+    type: "object",
+    properties: { url: { type: "string" } },
+    required: ["url"],
+  };
+
+  it("returns Commander parse errors to an embedded host", async () => {
+    const cmd = buildModuleCommand(makeMod("fetch.data"), makeExecutor());
+    const processExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("unexpected process exit");
+    });
+    await expect(cmd.parseAsync(["--unknown"], { from: "user" })).rejects.toBeInstanceOf(CommanderError);
+    expect(processExit).not.toHaveBeenCalled();
+  });
+
+  it("uses the host hooks for a missing input file without invoking the executor", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "apcore-cli-input-"));
+    try {
+      const executor = makeExecutor();
+      const onError = vi.fn();
+      const exit = vi.fn();
+      const write = vi.fn();
+      const processExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("unexpected process exit");
+      });
+      const cmd = buildModuleCommand(makeMod("fetch.data"), executor, 1000, undefined, false, {
+        onError, exit, errorStream: { write }, exitCodes: { GENERAL_INVALID_INPUT: 7 },
+      });
+
+      await cmd.parseAsync(["--format", "json", "--input", path.join(tmpDir, "missing.json")], { from: "user" });
+
+      expect(onError).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        moduleId: "fetch.data", code: "GENERAL_INVALID_INPUT", exitCode: 7,
+      }));
+      expect(exit).toHaveBeenCalledExactlyOnceWith(7);
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(write.mock.calls[0][0])).toMatchObject({
+        error: true, code: "GENERAL_INVALID_INPUT", exit_code: 7,
+      });
+      expect(processExit).not.toHaveBeenCalled();
+      expect(executor.call).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs onError and honours exitCodes + exit instead of process.exit", async () => {
+    const onError = vi.fn();
+    const exitSpy = vi.fn();
+    const processExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__process_exit__");
+    }) as never);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const cmd = buildModuleCommand(
+      makeMod("fetch.data", "Fetch", requiredUrlSchema),
+      makeExecutor(),
+      1000,
+      undefined,
+      false,
+      { printResult: false, onError, exitCodes: { SCHEMA_VALIDATION_ERROR: 2 }, exit: exitSpy },
+    );
+
+    await cmd.parseAsync([], { from: "user" });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const context = onError.mock.calls[0][0];
+    expect(context).toMatchObject({
+      moduleId: "fetch.data",
+      code: "SCHEMA_VALIDATION_ERROR",
+      exitCode: 2,
+    });
+    expect(context.error).toBeInstanceOf(Error);
+    expect(exitSpy).toHaveBeenCalledWith(2);
+    expect(processExit).not.toHaveBeenCalled();
+    expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("exit_code");
+  });
+
+  it("lets a host write the failure envelope to stdout", async () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("__exit__");
+    }) as never);
+
+    const cmd = buildModuleCommand(
+      makeMod("fetch.data", "Fetch", requiredUrlSchema),
+      makeExecutor(),
+      1000,
+      undefined,
+      false,
+      { printResult: false, errorStream: "stdout" },
+    );
+
+    await expect(cmd.parseAsync([], { from: "user" })).rejects.toThrow("__exit__");
+
+    const text = stdout.mock.calls.map(([chunk]) => String(chunk)).join("");
+    expect(text).toContain('"error":true');
+    expect(text).toContain('"code":"SCHEMA_VALIDATION_ERROR"');
+    expect(stderr).not.toHaveBeenCalled();
+  });
+
+  it("merges extraInput before validation and execution", async () => {
+    const executor = makeExecutor({ ok: true });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const cmd = buildModuleCommand(
+      makeMod("profile.set", "Set", {
+        type: "object",
+        properties: { url: { type: "string" }, json: { type: "boolean" } },
+      }),
+      executor,
+      1000,
+      undefined,
+      false,
+      { printResult: false, extraInput: () => ({ json: true }) },
+    );
+
+    await cmd.parseAsync(["--url", "https://example.com"], { from: "user" });
+
+    expect(executor.call).toHaveBeenCalledWith("profile.set", {
+      url: "https://example.com",
+      json: true,
+    });
+  });
+});
+
+describe("apcli exec — embedded-host failures", () => {
+  it.each([
+    { moduleId: "missing.module", flags: [], code: "MODULE_NOT_FOUND", fallback: 44 },
+    { moduleId: "INVALID", flags: [], code: "GENERAL_INVALID_INPUT", fallback: 2 },
+    { moduleId: "fetch.data", flags: ["--input", "{"], code: "GENERAL_INVALID_INPUT", fallback: 2 },
+    { moduleId: "fetch.data", flags: ["--input", "[]"], code: "GENERAL_INVALID_INPUT", fallback: 2 },
+    { moduleId: "fetch.data", flags: ["--sandbox", "--trace"], code: "GENERAL_INVALID_INPUT", fallback: 2 },
+  ])("reports $moduleId $flags exactly once", async ({ moduleId, flags, code, fallback }) => {
+    for (const exitCode of [fallback, 7]) {
+      const events: string[] = [];
+      const descriptor = makeMod("fetch.data");
+      const registry = {
+        getDefinition: (id: string) => id === descriptor.moduleId ? descriptor : null,
+        list: () => [],
+      };
+      const executor = makeExecutor();
+      const stop = new Error("host unwind");
+      const onError = vi.fn(async () => { events.push("hook"); });
+      const write = vi.fn(() => { events.push("write"); });
+      const exit = vi.fn(() => { events.push("exit"); throw stop; });
+      const cli = createCli({
+        registry, executor, onError, exit, errorStream: { write },
+        exitCodes: exitCode === fallback ? {} : { [code]: exitCode },
+      });
+
+      await expect(cli.parseAsync(
+        ["apcli", "exec", moduleId, "--format", "json", ...flags], { from: "user" },
+      )).rejects.toBe(stop);
+
+      expect(events).toEqual(["hook", "write", "exit"]);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ moduleId, code, exitCode }));
+      expect(JSON.parse(write.mock.calls[0][0])).toMatchObject({ error: true, code, exit_code: exitCode });
+      expect(exit).toHaveBeenCalledWith(exitCode);
+      expect(executor.call).not.toHaveBeenCalled();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setDocsUrl — base URL normalisation and canonical module paths
+// ---------------------------------------------------------------------------
+
+describe("setDocsUrl()", () => {
+  afterEach(() => setDocsUrl(null));
+
+  it("strips trailing slashes and links to the full module path, not the leaf command", () => {
+    setDocsUrl("https://docs.example.com/cli///");
+    const cmd = buildModuleCommand(
+      makeMod("series.asset.add", "Add an asset"),
+      makeExecutor(),
+      1000,
+      "add",
+    );
+    let help = "";
+    cmd.configureOutput({ writeOut: (text) => { help += text; } });
+    cmd.outputHelp();
+    expect(help).toContain("https://docs.example.com/cli/commands/series.asset.add");
+    expect(help).not.toContain("//commands");
+    expect(help).not.toContain("/commands/add");
+  });
 });

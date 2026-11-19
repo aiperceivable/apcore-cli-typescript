@@ -10,6 +10,7 @@
 
 /** Thrown when the user does not approve module execution within the timeout. */
 export class ApprovalTimeoutError extends Error {
+  readonly code = "APPROVAL_TIMEOUT";
   constructor(message = "Approval timed out") {
     super(message);
     this.name = "ApprovalTimeoutError";
@@ -34,6 +35,7 @@ export class ConfigDecryptionError extends Error {
 
 /** Thrown when module execution fails. */
 export class ModuleExecutionError extends Error {
+  readonly code = "MODULE_EXECUTE_ERROR";
   constructor(message = "Module execution failed") {
     super(message);
     this.name = "ModuleExecutionError";
@@ -42,6 +44,7 @@ export class ModuleExecutionError extends Error {
 
 /** Thrown when approval is denied by the user. */
 export class ApprovalDeniedError extends Error {
+  readonly code = "APPROVAL_DENIED";
   constructor(message = "Approval denied") {
     super(message);
     this.name = "ApprovalDeniedError";
@@ -83,10 +86,16 @@ export class UnresolvableRefError extends Error {
 
 /** Thrown when a module is not found. */
 export class ModuleNotFoundError extends Error {
+  readonly code = "MODULE_NOT_FOUND";
   constructor(message = "Module not found") {
     super(message);
     this.name = "ModuleNotFoundError";
   }
+}
+
+/** Raised for invalid dispatch arguments before calling the executor. */
+export class InvalidCliInputError extends Error {
+  readonly code = "GENERAL_INVALID_INPUT";
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +176,9 @@ export function exitCodeForError(error: unknown): ExitCode {
   if (error instanceof ModuleExecutionError) {
     return EXIT_CODES.MODULE_EXECUTE_ERROR;
   }
+  if (error instanceof InvalidCliInputError) {
+    return EXIT_CODES.INVALID_CLI_INPUT;
+  }
 
   // Check for apcore error codes on the error object
   if (error instanceof Error) {
@@ -199,7 +211,7 @@ export function exitCodeForError(error: unknown): ExitCode {
       CONFIG_BIND_ERROR: EXIT_CODES.CONFIG_BIND_ERROR,
       ERROR_FORMATTER_DUPLICATE: EXIT_CODES.ERROR_FORMATTER_DUPLICATE,
     };
-    if (code && code in codeMap) {
+    if (code && Object.hasOwn(codeMap, code)) {
       return codeMap[code];
     }
   }
