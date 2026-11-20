@@ -222,6 +222,11 @@ export function detectProxyHazards(
   return hazards;
 }
 
+export { detectEffectiveProxyHazards, effectiveHazardToWire } from "apcore-toolkit";
+export type {
+  EffectiveProxyHazard, EffectiveProxyHazardKind, EffectiveProxyHazardWire, OpenApiInputLocation,
+} from "apcore-toolkit";
+
 /** Wire (snake_case) view of a hazard for the machine output formats. */
 export function hazardToWire(h: ProxyHazard): Record<string, unknown> {
   return {

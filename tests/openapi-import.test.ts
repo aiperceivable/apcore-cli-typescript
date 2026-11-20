@@ -463,13 +463,14 @@ describe("apcli openapi scan (FE-15a §4.2)", () => {
     expect(table.stdout).toMatch(/no 2xx response defined/);
   });
 
-  it("T-OAPI-11: an external $ref is named in a warning and never fetched", async () => {
+  it("T-OAPI-11: an external $ref produces a redacted warning and is never fetched", async () => {
     const res = await runOpenapi([
       "openapi", "scan", fixture("external-ref.yaml"), "--format", "json",
     ]);
     const warnings = JSON.parse(res.stdout).modules[0].warnings.join(" ");
     expect(warnings).toMatch(/external \$ref not fetched/);
-    expect(warnings).toContain("./common.yaml#/components/schemas/Error");
+    expect(warnings).toContain("<external-ref>");
+    expect(warnings).not.toContain("./common.yaml");
   });
 
   it("T-OAPI-12: a Swagger 2.0 document exits 47, naming `swagger` and 3.0/3.1", async () => {
@@ -850,4 +851,60 @@ describe("registration (FE-15a §4.7)", () => {
     const group = program.commands.find((c) => c.name() === "apcli")!;
     expect(group.commands.map((c) => c.name())).not.toContain("openapi");
   });
+});
+
+
+it("OpenAPI commands expose effective diagnostics while retaining legacy JSON and bindings", async () => {
+  const specRoot = process.env.APCORE_CLI_SPEC_REPO ?? path.resolve("..", "apcore-cli");
+  const shared = JSON.parse(fs.readFileSync(
+    path.join(specRoot, "conformance/fixtures/openapi_effective_documents.json"), "utf8",
+  ));
+  const { document, expected } = shared.cases.find(
+    (fixtureCase: { id: string }) => fixtureCase.id === "standalone_reports_selected_forwarding_failure",
+  );
+  const out = scratch();
+  const source = path.join(out, "standalone.json");
+  fs.writeFileSync(source, JSON.stringify(document));
+
+  const scan = await runOpenapi(["openapi", "scan", source, "--format", "json"]);
+  const payload = JSON.parse(scan.stdout);
+  expect(payload.hazards).toEqual([]);
+  expect(payload.effective_hazards).toEqual(expected.diagnostics);
+  expect(payload.modules.find((module: { module_id: string }) => module.module_id === "list_items")
+    .input_schema.properties).toEqual(expected.modules[0].properties);
+
+  const filtered = await runOpenapi(["openapi", "scan", source, "--include", "^list_items$", "--format", "yaml"]);
+  expect(yaml.load(filtered.stdout)).toMatchObject({ hazards: [], effective_hazards: [] });
+  const generation = await runOpenapi(["openapi", "generate", source, "-o", out]);
+  expect(generation.stdout).not.toMatch(/update_items.*tag/);
+  expect(generation.stderr).toMatch(/update_items.*tag/);
+  const dryRun = await runOpenapi(["openapi", "generate", source, "-o", scratch(), "--dry-run"]);
+  expect(dryRun.stdout).toContain("Would write:");
+  expect(dryRun.stdout).not.toMatch(/update_items.*tag/);
+  expect(dryRun.stderr).toMatch(/update_items.*tag/);
+  const binding = yaml.load(fs.readFileSync(path.join(out, "list_items.binding.yaml"), "utf8"));
+  expect(binding).toMatchObject({ bindings: [{
+    target: "GET /items/{item_id}",
+    input_schema: { properties: expected.modules[0].properties },
+  }] });
+});
+
+it("keeps external parameter references out of generated bindings and diagnostics", async () => {
+  const directory = scratch();
+  const source = path.join(directory, "external.json");
+  fs.writeFileSync(source, JSON.stringify({
+    openapi: "3.1.0",
+    paths: { "/items": { get: {
+      operationId: "list_items",
+      parameters: [{ $ref: "https://example.invalid/parameters.json?marker=fixture-value" }],
+      responses: { "200": { description: "OK" } },
+    } } },
+  }));
+  const scan = await runOpenapi(["openapi", "scan", source, "--format", "json"]);
+  expect(JSON.parse(scan.stdout).effective_hazards[0].kind.problem.reference).toBe("<external-ref>");
+  expect(scan.stdout).not.toContain("fixture-value");
+  const generated = await runOpenapi(["openapi", "generate", source, "-o", directory]);
+  expect(generated.stderr).toContain("<external-ref>");
+  expect(generated.stderr + generated.stdout).not.toContain("fixture-value");
+  expect(fs.readFileSync(path.join(directory, "list_items.binding.yaml"), "utf8")).not.toContain("fixture-value");
 });

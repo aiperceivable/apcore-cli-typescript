@@ -24,6 +24,10 @@ import {
   OpenAPIScanner,
   InvalidSpecError,
   YAMLWriter,
+  describeEffectiveProxyHazard,
+  detectEffectiveProxyHazards,
+  effectiveHazardToWire,
+  type EffectiveProxyHazard,
   formatCsv,
   formatJsonl,
   formatModules,
@@ -152,7 +156,7 @@ async function loadAndScan(
 
   let modules: ScannedModule[];
   try {
-    modules = new OpenAPIScanner().scan(spec, toScanOptions(flags));
+    modules = new OpenAPIScanner().scanWithEffectiveParameters(spec, toScanOptions(flags));
   } catch (err) {
     if (err instanceof InvalidSpecError) {
       // The toolkit's message names the offending `openapi` value and states
@@ -245,6 +249,16 @@ function renderHazards(hazards: readonly ProxyHazard[], write: (s: string) => vo
   }
 }
 
+/** Render forwarding findings for the selected effective modules. */
+function renderEffectiveHazards(
+  hazards: readonly EffectiveProxyHazard[], write: (text: string) => void,
+): void {
+  if (hazards.length === 0) return;
+  write("\nEffective OpenAPI proxy diagnostics:\n");
+  for (const hazard of hazards) write(`  ${describeEffectiveProxyHazard(hazard)}\n`);
+}
+
+
 // ---------------------------------------------------------------------------
 // openapi scan (FE-15a §4.2)
 // ---------------------------------------------------------------------------
@@ -264,6 +278,7 @@ function registerScanSubcommand(group: Command): void {
     .action(async (source: string, flags: ScanFlags & { format?: string }) => {
       const { spec, modules } = await loadAndScan(source, flags);
       const hazards = detectProxyHazards(spec, modules);
+      const effectiveHazards = detectEffectiveProxyHazards(modules);
       const fmt = resolveFormat(flags.format);
 
       if (fmt === "json" || fmt === "yaml") {
@@ -275,6 +290,7 @@ function registerScanSubcommand(group: Command): void {
           // (FE-15a §4.3).
           modules: modulesToDicts([...modules]),
           hazards: hazards.map(hazardToWire),
+          effective_hazards: effectiveHazards.map(effectiveHazardToWire),
         };
         process.stdout.write(
           fmt === "json"
@@ -293,6 +309,7 @@ function registerScanSubcommand(group: Command): void {
         );
         renderWarnings(modules, (s) => process.stderr.write(s));
         renderHazards(hazards, (s) => process.stderr.write(s));
+        renderEffectiveHazards(effectiveHazards, (s) => process.stderr.write(s));
         return;
       }
 
@@ -308,6 +325,7 @@ function registerScanSubcommand(group: Command): void {
           process.stdout.write(fmt === "csv" ? formatCsv(rows) : formatJsonl(rows));
         }
         renderHazards(hazards, (s) => process.stderr.write(s));
+        renderEffectiveHazards(effectiveHazards, (s) => process.stderr.write(s));
         return;
       }
 
@@ -328,6 +346,7 @@ function registerScanSubcommand(group: Command): void {
       }
       renderWarnings(modules, (s) => process.stdout.write(s));
       renderHazards(hazards, (s) => process.stdout.write(s));
+      renderEffectiveHazards(effectiveHazards, (s) => process.stdout.write(s));
       // Exit 0 even when warnings or hazards are present — a
       // partially-understood document is a successful scan (FE-15a §4.2).
     });
@@ -387,6 +406,7 @@ function registerGenerateSubcommand(group: Command): void {
     ) => {
       const { spec, modules } = await loadAndScan(source, flags);
       const hazards = detectProxyHazards(spec, modules);
+      const effectiveHazards = detectEffectiveProxyHazards(modules);
 
       const filenames = plannedFilenames(modules);
       // Resolved, so the paths a `--dry-run` lists are the same ones the
@@ -418,6 +438,7 @@ function registerGenerateSubcommand(group: Command): void {
           process.stdout.write(`Would write: ${filePath}\n`);
         }
         renderHazards(hazards, (s) => process.stdout.write(s));
+        renderEffectiveHazards(effectiveHazards, (s) => process.stderr.write(s));
         process.stdout.write(`\n${FE15B_NOTE}\n`);
         return;
       }
@@ -459,6 +480,7 @@ function registerGenerateSubcommand(group: Command): void {
           ".\n",
       );
       renderHazards(hazards, (s) => process.stdout.write(s));
+      renderEffectiveHazards(effectiveHazards, (s) => process.stderr.write(s));
       process.stdout.write(`\n${FE15B_NOTE}\n`);
 
       // A write the user asked for and did not get is a real fault. Skipped

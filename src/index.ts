@@ -109,11 +109,15 @@ export { registerOpenapiCommand } from "./openapi-cmd.js";
 export {
   loadOpenapiSource,
   detectProxyHazards,
+  detectEffectiveProxyHazards,
+  effectiveHazardToWire,
   parseHeaders,
   OpenapiSourceError,
   DEFAULT_OPENAPI_TIMEOUT_SECONDS,
 } from "./openapi-source.js";
-export type { ProxyHazard } from "./openapi-source.js";
+export type {
+  EffectiveProxyHazard, EffectiveProxyHazardKind, EffectiveProxyHazardWire, OpenApiInputLocation, ProxyHazard,
+} from "./openapi-source.js";
 
 // Errors
 export {

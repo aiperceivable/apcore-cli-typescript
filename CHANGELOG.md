@@ -5,6 +5,21 @@ All notable changes to apcore-cli (TypeScript SDK) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-11-20
+
+### Added
+
+- `detectEffectiveProxyHazards()` validates selected modules from toolkit
+  0.15.0's effective scanner before HTTP proxy registration. It uses the
+  scanner's effective input locations to report incompatible request
+  encoding, cross-location name collisions, resolution issues, and schema
+  or path template mismatches. The CLI export delegates to toolkit's shared
+  implementation.
+
+### Changed
+
+- Use effective OpenAPI scanning for standalone `scan` and `generate`, and
+  include `effective_hazards` alongside the existing machine diagnostics.
 
 ## [0.14.0] - 2026-11-19
 
